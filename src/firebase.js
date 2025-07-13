@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, orderBy, limit, getDocs, deleteDoc } from 'firebase/firestore';
 // MongoDB integration removed - using Firebase only
 
 // Firebase configuration - Connected to zolopilot-ai project
@@ -59,6 +59,7 @@ export const signInWithGoogle = async () => {
 export const logOut = () => signOut(auth);
 
 // Database functions (Firebase Firestore only)
+// Legacy function - saves to single document (for backward compatibility)
 export const saveMindMap = async (userId, mindMapData) => {
   try {
     const docRef = doc(db, 'mindmaps', userId);
@@ -74,6 +75,77 @@ export const saveMindMap = async (userId, mindMapData) => {
   }
 };
 
+// New function - saves mind map to user's collection
+export const saveMindMapToGallery = async (userId, mindMapData, title, prompt) => {
+  try {
+    const mindMapsRef = collection(db, 'users', userId, 'mindmaps');
+    const docRef = await addDoc(mindMapsRef, {
+      title: title,
+      prompt: prompt,
+      mindMapData: mindMapData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error('Error saving mind map to gallery:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Load all mind maps for a user (up to 50, ordered by creation date)
+export const loadUserMindMaps = async (userId) => {
+  try {
+    const mindMapsRef = collection(db, 'users', userId, 'mindmaps');
+    const q = query(mindMapsRef, orderBy('createdAt', 'desc'), limit(50));
+    const querySnapshot = await getDocs(q);
+    
+    const mindMaps = [];
+    querySnapshot.forEach((doc) => {
+      mindMaps.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return mindMaps;
+  } catch (error) {
+    console.error('Error loading user mind maps:', error);
+    return [];
+  }
+};
+
+// Delete a specific mind map
+export const deleteMindMap = async (userId, mindMapId) => {
+  try {
+    const docRef = doc(db, 'users', userId, 'mindmaps', mindMapId);
+    await deleteDoc(docRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting mind map:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Subscribe to user's mind maps collection
+export const subscribeToUserMindMaps = (userId, callback) => {
+  const mindMapsRef = collection(db, 'users', userId, 'mindmaps');
+  const q = query(mindMapsRef, orderBy('createdAt', 'desc'), limit(50));
+  
+  return onSnapshot(q, (querySnapshot) => {
+    const mindMaps = [];
+    querySnapshot.forEach((doc) => {
+      mindMaps.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    callback(mindMaps);
+  });
+};
+
+// Legacy functions for backward compatibility
 export const loadMindMap = async (userId) => {
   try {
     const docRef = doc(db, 'mindmaps', userId);

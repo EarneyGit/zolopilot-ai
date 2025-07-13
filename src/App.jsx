@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { auth, signInAnonymous, onAuthStateChanged, saveMindMap, loadMindMap, signUpWithEmail, signInWithEmail, signInWithGoogle, logOut } from './firebase'
+import { auth, signInAnonymous, onAuthStateChanged, saveMindMap, loadMindMap, signUpWithEmail, signInWithEmail, signInWithGoogle, logOut, saveMindMapToGallery, loadUserMindMaps, subscribeToUserMindMaps, deleteMindMap } from './firebase'
 import MindMapNode from './components/MindMapNode'
 import LoadingSpinner from './components/LoadingSpinner'
 import TreeView from './components/TreeView'
@@ -81,6 +81,10 @@ function App() {
     const saved = localStorage.getItem('zolopilot_savedMindMaps')
     return saved ? JSON.parse(saved) : []
   })
+  
+  // Cloud-synced mind maps state
+  const [cloudMindMaps, setCloudMindMaps] = useState([])
+  const [mindMapSubscription, setMindMapSubscription] = useState(null)
 
 
   // MongoDB integration removed - using Firebase only
@@ -120,20 +124,44 @@ function App() {
       if (user) {
         setUser(user)
         setIsAuthenticated(true)
-        // Load existing mind map
+        
+        // Load existing mind map (legacy)
         const savedMindMap = await loadMindMap(user.uid)
         if (savedMindMap) {
           setMindMapData(savedMindMap)
         }
+        
+        // Load user's mind maps from cloud
+        const userMindMaps = await loadUserMindMaps(user.uid)
+        setCloudMindMaps(userMindMaps)
+        
+        // Subscribe to real-time updates
+        const subscription = subscribeToUserMindMaps(user.uid, (mindMaps) => {
+          setCloudMindMaps(mindMaps)
+        })
+        setMindMapSubscription(subscription)
+        
       } else {
         setUser(null)
         setIsAuthenticated(false)
         setMindMapData(null)
+        setCloudMindMaps([])
+        
+        // Cleanup subscription
+        if (mindMapSubscription) {
+          mindMapSubscription()
+          setMindMapSubscription(null)
+        }
       }
     })
 
-    return () => unsubscribe()
-  }, [])
+    return () => {
+      unsubscribe()
+      if (mindMapSubscription) {
+        mindMapSubscription()
+      }
+    }
+  }, [mindMapSubscription])
 
   // LLM API call function
   const callLLM = async (prompt, isJsonOutput = false) => {
@@ -581,24 +609,35 @@ Return ONLY the JSON object, no markdown or additional text.`
         setMindMapData(mindMapResult)
         setMessage('Mind map generated successfully!')
         
-        // Save to Firebase
+        // Save to Firebase (legacy - single mind map)
         if (user) {
           await saveMindMap(user.uid, mindMapResult)
         }
         
-        // Save to gallery
-        const galleryItem = {
-          id: mindMapResult.id,
-          title: startupIdea.slice(0, 50) + (startupIdea.length > 50 ? '...' : ''),
-          data: mindMapResult,
-          createdAt: new Date().toISOString(),
-          prompt: startupIdea
+        // Save to cloud gallery (new - multiple mind maps)
+        if (user) {
+          const title = startupIdea.slice(0, 50) + (startupIdea.length > 50 ? '...' : '')
+          const result = await saveMindMapToGallery(user.uid, mindMapResult, title, startupIdea)
+          if (result.success) {
+            console.log('Mind map saved to cloud gallery with ID:', result.id)
+          } else {
+            console.error('Failed to save to cloud gallery:', result.error)
+          }
+        } else {
+          // For non-authenticated users, save to localStorage as fallback
+          const galleryItem = {
+            id: mindMapResult.id,
+            title: startupIdea.slice(0, 50) + (startupIdea.length > 50 ? '...' : ''),
+            data: mindMapResult,
+            createdAt: new Date().toISOString(),
+            prompt: startupIdea
+          }
+          
+          setSavedMindMaps(prev => {
+            const newMindMaps = [galleryItem, ...prev.slice(0, 9)] // Keep only 10 most recent
+            return newMindMaps
+          })
         }
-        
-        setSavedMindMaps(prev => {
-          const newMindMaps = [galleryItem, ...prev.slice(0, 9)] // Keep only 10 most recent
-          return newMindMaps
-        })
       } else {
         throw new Error('Invalid mind map structure received');
       }
@@ -1614,24 +1653,51 @@ Return ONLY the JSON object, no markdown or additional text.`
         </div>
 
         {/* Mind Map Gallery */}
-        {savedMindMaps.length > 0 && (
+        {((user && cloudMindMaps.length > 0) || (!user && savedMindMaps.length > 0)) && (
           <div className="max-w-4xl mx-auto w-full mb-8">
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 shadow-2xl">
-              <h2 className="text-2xl font-bold text-white mb-6 text-center">
-                Your Mind Map Gallery
-              </h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-white text-center flex-1">
+                  Your Mind Map Gallery {user && `(${cloudMindMaps.length}/50)`}
+                </h2>
+                {user && (
+                  <div className="flex items-center space-x-2 text-sm text-slate-400">
+                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                    <span>Cloud Synced</span>
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {savedMindMaps.map((mindMap) => (
+                {(user ? cloudMindMaps : savedMindMaps).map((mindMap) => (
                   <div
                     key={mindMap.id}
-                    className="bg-slate-900/50 border border-slate-600/50 rounded-lg p-4 hover:border-purple-500/50 transition-all duration-200 cursor-pointer group hover:bg-slate-900/70"
-                    onClick={() => {
-                      setMindMapData(mindMap.data)
-                      setStartupIdea(mindMap.prompt)
-                      setShowGenerationView(true)
-                    }}
+                    className="bg-slate-900/50 border border-slate-600/50 rounded-lg p-4 hover:border-purple-500/50 transition-all duration-200 group hover:bg-slate-900/70 relative"
                   >
-                    <div className="flex flex-col h-full">
+                    {/* Delete button for cloud mind maps */}
+                    {user && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          if (window.confirm('Are you sure you want to delete this mind map?')) {
+                            const result = await deleteMindMap(user.uid, mindMap.id)
+                            if (!result.success) {
+                              console.error('Failed to delete mind map:', result.error)
+                            }
+                          }
+                        }}
+                        className="absolute top-2 right-2 w-6 h-6 bg-red-500/80 hover:bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs z-10"
+                      >
+                        ×
+                      </button>
+                    )}
+                    <div 
+                      className="flex flex-col h-full cursor-pointer"
+                      onClick={() => {
+                        setMindMapData(user ? mindMap.mindMapData : mindMap.data)
+                        setStartupIdea(mindMap.prompt)
+                        setShowGenerationView(true)
+                      }}
+                    >
                       <h3 className="text-white font-medium text-sm mb-2 line-clamp-2 group-hover:text-purple-300 transition-colors">
                         {mindMap.title}
                       </h3>
@@ -1643,14 +1709,21 @@ Return ONLY the JSON object, no markdown or additional text.`
                           {new Date(mindMap.createdAt).toLocaleDateString()}
                         </span>
                         <div className="flex items-center space-x-1">
-                          <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                          <span>Mind Map</span>
+                          <div className={`w-2 h-2 rounded-full ${user ? 'bg-green-400' : 'bg-purple-400'}`}></div>
+                          <span>{user ? 'Cloud' : 'Local'}</span>
                         </div>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
+              {!user && (
+                <div className="mt-4 p-3 bg-blue-900/30 border border-blue-500/50 rounded-lg text-center">
+                  <p className="text-blue-300 text-sm">
+                    💡 <strong>Sign in</strong> to sync your mind maps across devices and store up to 50 mind maps in the cloud!
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
