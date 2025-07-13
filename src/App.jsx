@@ -20,13 +20,22 @@ const aiStartupIdeas = [
 ]
 
 function App() {
-  // Core state management
-  const [startupIdea, setStartupIdea] = useState('')
-  const [mindMapData, setMindMapData] = useState(null)
+  // Core state management with localStorage persistence
+  const [startupIdea, setStartupIdea] = useState(() => {
+    const saved = localStorage.getItem('zolopilot_startupIdea')
+    return saved || ''
+  })
+  const [mindMapData, setMindMapData] = useState(() => {
+    const saved = localStorage.getItem('zolopilot_mindMapData')
+    return saved ? JSON.parse(saved) : null
+  })
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(() => {
+    const saved = localStorage.getItem('zolopilot_message')
+    return saved || ''
+  })
   
   // Authentication state
   const [showAuthModal, setShowAuthModal] = useState(false)
@@ -39,7 +48,10 @@ function App() {
   const [currentText, setCurrentText] = useState('')
   const [isTyping, setIsTyping] = useState(true)
   const [showCursor, setShowCursor] = useState(true)
-  const [showGenerationView, setShowGenerationView] = useState(false)
+  const [showGenerationView, setShowGenerationView] = useState(() => {
+    const saved = localStorage.getItem('zolopilot_showGenerationView')
+    return saved === 'true'
+  })
   const [isTextareaFocused, setIsTextareaFocused] = useState(false)
   const [isChatExpanded, setIsChatExpanded] = useState(true)
   const [zoomLevel, setZoomLevel] = useState(1)
@@ -59,10 +71,38 @@ function App() {
   const [llmApiKey] = useState('AIzaSyDOjHxvf4EzxLLxVrotj9TKMDRc-BfLtd0') // Your Gemini API key
   const [enablePromptEnhancement, setEnablePromptEnhancement] = useState(true) // Enable two-stage LLM processing
   const [inputQuality, setInputQuality] = useState(null) // Track input quality analysis
-  const [enhancedPrompt, setEnhancedPrompt] = useState('') // Store the enhanced prompt to show users
+  const [enhancedPrompt, setEnhancedPrompt] = useState(() => {
+    const saved = localStorage.getItem('zolopilot_enhancedPrompt')
+    return saved || ''
+  }) // Store the enhanced prompt to show users
 
 
   // MongoDB integration removed - using Firebase only
+
+  // State persistence effects
+  useEffect(() => {
+    localStorage.setItem('zolopilot_startupIdea', startupIdea)
+  }, [startupIdea])
+
+  useEffect(() => {
+    if (mindMapData) {
+      localStorage.setItem('zolopilot_mindMapData', JSON.stringify(mindMapData))
+    } else {
+      localStorage.removeItem('zolopilot_mindMapData')
+    }
+  }, [mindMapData])
+
+  useEffect(() => {
+    localStorage.setItem('zolopilot_showGenerationView', showGenerationView.toString())
+  }, [showGenerationView])
+
+  useEffect(() => {
+    localStorage.setItem('zolopilot_message', message)
+  }, [message])
+
+  useEffect(() => {
+    localStorage.setItem('zolopilot_enhancedPrompt', enhancedPrompt)
+  }, [enhancedPrompt])
 
   // Firebase authentication
   useEffect(() => {
@@ -210,6 +250,15 @@ function App() {
       setIsAuthenticated(false)
       setMindMapData(null)
       setStartupIdea('')
+      setShowGenerationView(false)
+      setMessage('')
+      setEnhancedPrompt('')
+      // Clear localStorage
+      localStorage.removeItem('zolopilot_startupIdea')
+      localStorage.removeItem('zolopilot_mindMapData')
+      localStorage.removeItem('zolopilot_showGenerationView')
+      localStorage.removeItem('zolopilot_message')
+      localStorage.removeItem('zolopilot_enhancedPrompt')
     } catch (error) {
       setError('Failed to sign out')
     }
@@ -819,17 +868,40 @@ Return ONLY the JSON object, no markdown or additional text.`
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <button 
-                    onClick={() => setShowGenerationView(false)}
-                    className="text-white hover:text-gray-300 transition-colors"
+                    onClick={() => {
+                      setShowGenerationView(false)
+                      setMindMapData(null)
+                      setStartupIdea('')
+                      setMessage('')
+                      setEnhancedPrompt('')
+                      setError('')
+                      // Clear localStorage for fresh start
+                      localStorage.removeItem('zolopilot_startupIdea')
+                      localStorage.removeItem('zolopilot_mindMapData')
+                      localStorage.removeItem('zolopilot_showGenerationView')
+                      localStorage.removeItem('zolopilot_message')
+                      localStorage.removeItem('zolopilot_enhancedPrompt')
+                    }}
+                    className="flex items-center space-x-2 text-white hover:text-purple-300 transition-colors bg-slate-800/50 hover:bg-slate-700/50 px-3 py-2 rounded-lg border border-slate-600/50"
+                    title="Start new idea"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
+                    <span className="font-medium">New Idea</span>
                   </button>
                   <h2 className="text-xl font-bold text-white">Zolopilot AI</h2>
                 </div>
                 <div className="flex items-center space-x-4">
                   {loading && <LoadingSpinner size="sm" />}
+                  {isAuthenticated && (
+                    <button 
+                      onClick={handleSignOut}
+                      className="text-white hover:text-purple-300 transition-colors font-medium px-4 py-2 rounded-lg hover:bg-white/5 backdrop-blur-sm border border-slate-600/50"
+                    >
+                      Sign Out
+                    </button>
+                  )}
                 </div>
               </div>
             </header>
