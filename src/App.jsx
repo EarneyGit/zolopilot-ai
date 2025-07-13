@@ -1653,7 +1653,7 @@ Return ONLY the JSON object, no markdown or additional text.`
         </div>
 
         {/* Mind Map Gallery */}
-        {((user && cloudMindMaps.length > 0) || (!user && savedMindMaps.length > 0)) && (
+        {(user || (!user && savedMindMaps.length > 0)) && (
           <div className="max-w-4xl mx-auto w-full mb-8">
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 shadow-2xl">
               <div className="flex items-center justify-between mb-6">
@@ -1667,8 +1667,9 @@ Return ONLY the JSON object, no markdown or additional text.`
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(user ? cloudMindMaps : savedMindMaps).map((mindMap) => (
+              {(user ? cloudMindMaps : savedMindMaps).length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {(user ? cloudMindMaps : savedMindMaps).map((mindMap) => (
                   <div
                     key={mindMap.id}
                     className="bg-slate-900/50 border border-slate-600/50 rounded-lg p-4 hover:border-purple-500/50 transition-all duration-200 group hover:bg-slate-900/70 relative"
@@ -1715,8 +1716,21 @@ Return ONLY the JSON object, no markdown or additional text.`
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-slate-400 text-lg mb-4">
+                    {user ? '🎯 No mind maps yet!' : '📝 No saved mind maps'}
+                  </div>
+                  <p className="text-slate-500 text-sm">
+                    {user 
+                      ? 'Generate your first mind map to start building your gallery of ideas.'
+                      : 'Create mind maps to see them saved here locally.'
+                    }
+                  </p>
+                </div>
+              )}
               {!user && (
                 <div className="mt-4 p-3 bg-blue-900/30 border border-blue-500/50 rounded-lg text-center">
                   <p className="text-blue-300 text-sm">
