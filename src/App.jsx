@@ -75,6 +75,12 @@ function App() {
     const saved = localStorage.getItem('zolopilot_enhancedPrompt')
     return saved || ''
   }) // Store the enhanced prompt to show users
+  
+  // Mindmap gallery state
+  const [savedMindMaps, setSavedMindMaps] = useState(() => {
+    const saved = localStorage.getItem('zolopilot_savedMindMaps')
+    return saved ? JSON.parse(saved) : []
+  })
 
 
   // MongoDB integration removed - using Firebase only
@@ -103,6 +109,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('zolopilot_enhancedPrompt', enhancedPrompt)
   }, [enhancedPrompt])
+
+  useEffect(() => {
+    localStorage.setItem('zolopilot_savedMindMaps', JSON.stringify(savedMindMaps))
+  }, [savedMindMaps])
 
   // Firebase authentication
   useEffect(() => {
@@ -575,6 +585,20 @@ Return ONLY the JSON object, no markdown or additional text.`
         if (user) {
           await saveMindMap(user.uid, mindMapResult)
         }
+        
+        // Save to gallery
+        const galleryItem = {
+          id: mindMapResult.id,
+          title: startupIdea.slice(0, 50) + (startupIdea.length > 50 ? '...' : ''),
+          data: mindMapResult,
+          createdAt: new Date().toISOString(),
+          prompt: startupIdea
+        }
+        
+        setSavedMindMaps(prev => {
+          const newMindMaps = [galleryItem, ...prev.slice(0, 9)] // Keep only 10 most recent
+          return newMindMaps
+        })
       } else {
         throw new Error('Invalid mind map structure received');
       }
@@ -1589,7 +1613,47 @@ Return ONLY the JSON object, no markdown or additional text.`
           </div>
         </div>
 
-
+        {/* Mind Map Gallery */}
+        {savedMindMaps.length > 0 && (
+          <div className="max-w-4xl mx-auto w-full mb-8">
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 shadow-2xl">
+              <h2 className="text-2xl font-bold text-white mb-6 text-center">
+                Your Mind Map Gallery
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {savedMindMaps.map((mindMap) => (
+                  <div
+                    key={mindMap.id}
+                    className="bg-slate-900/50 border border-slate-600/50 rounded-lg p-4 hover:border-purple-500/50 transition-all duration-200 cursor-pointer group hover:bg-slate-900/70"
+                    onClick={() => {
+                      setMindMapData(mindMap.data)
+                      setStartupIdea(mindMap.prompt)
+                      setShowGenerationView(true)
+                    }}
+                  >
+                    <div className="flex flex-col h-full">
+                      <h3 className="text-white font-medium text-sm mb-2 line-clamp-2 group-hover:text-purple-300 transition-colors">
+                        {mindMap.title}
+                      </h3>
+                      <p className="text-slate-400 text-xs mb-3 line-clamp-3 flex-1">
+                        {mindMap.prompt}
+                      </p>
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span>
+                          {new Date(mindMap.createdAt).toLocaleDateString()}
+                        </span>
+                        <div className="flex items-center space-x-1">
+                          <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                          <span>Mind Map</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         {message && (

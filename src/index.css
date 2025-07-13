@@ -21,6 +21,20 @@
     @apply text-sm sm:text-base lg:text-lg;
   }
   
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+  
   .text-responsive-xl {
     @apply text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl;
   }
