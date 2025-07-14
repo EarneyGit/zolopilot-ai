@@ -6,6 +6,7 @@ import LoadingSpinner from './components/LoadingSpinner'
 import TreeView from './components/TreeView'
 import ListView from './components/ListView'
 import AuthModal from './components/AuthModal'
+
 // MongoDB integration removed - using Firebase only
 
 import { processUserInput, analyzeInputQuality, ENHANCEMENT_PRESETS } from './services/promptEnhancer'
@@ -50,16 +51,20 @@ function App() {
   const [showCursor, setShowCursor] = useState(true)
   const [showGenerationView, setShowGenerationView] = useState(() => {
     const saved = localStorage.getItem('zolopilot_showGenerationView')
-    return saved === 'true'
+    const savedMindMap = localStorage.getItem('zolopilot_mindMapData')
+    // Only show generation view if we have both the flag and actual mind map data
+    return saved === 'true' && savedMindMap && savedMindMap !== 'null'
   })
   const [isTextareaFocused, setIsTextareaFocused] = useState(false)
   const [isChatExpanded, setIsChatExpanded] = useState(true)
+  const [isMindMapExpanded, setIsMindMapExpanded] = useState(false)
+  const [isChatSectionExpanded, setIsChatSectionExpanded] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
   const [panPosition, setPanPosition] = useState({ x: 0, y: 0 })
   
   // Task management state
   const [viewMode, setViewMode] = useState('flowchart') // 'flowchart' or 'list'
-  const [showActualTasksOnly, setShowActualTasksOnly] = useState(false)
+
   const [taskData, setTaskData] = useState([])
   const [selectedNode, setSelectedNode] = useState(null)
   
@@ -85,6 +90,10 @@ function App() {
   // Cloud-synced mind maps state
   const [cloudMindMaps, setCloudMindMaps] = useState([])
   const [mindMapSubscription, setMindMapSubscription] = useState(null)
+  
+  // Chat functionality state
+  const [chatMessages, setChatMessages] = useState([])
+  const [isEnhancing, setIsEnhancing] = useState(false)
 
 
   // MongoDB integration removed - using Firebase only
@@ -99,6 +108,8 @@ function App() {
       localStorage.setItem('zolopilot_mindMapData', JSON.stringify(mindMapData))
     } else {
       localStorage.removeItem('zolopilot_mindMapData')
+      // Reset generation view when mind map data is cleared
+      setShowGenerationView(false)
     }
   }, [mindMapData])
 
@@ -125,21 +136,37 @@ function App() {
         setUser(user)
         setIsAuthenticated(true)
         
-        // Load existing mind map (legacy)
-        const savedMindMap = await loadMindMap(user.uid)
-        if (savedMindMap) {
-          setMindMapData(savedMindMap)
+        try {
+          // Load existing mind map (legacy)
+          const savedMindMap = await loadMindMap(user.uid)
+          if (savedMindMap) {
+            setMindMapData(savedMindMap)
+          }
+        } catch (error) {
+          console.warn('Could not load legacy mind map:', error.message)
+          // Continue without legacy data - this is not critical
         }
         
-        // Load user's mind maps from cloud
-        const userMindMaps = await loadUserMindMaps(user.uid)
-        setCloudMindMaps(userMindMaps)
+        try {
+          // Load user's mind maps from cloud
+          const userMindMaps = await loadUserMindMaps(user.uid)
+          setCloudMindMaps(userMindMaps)
+        } catch (error) {
+          console.warn('Could not load user mind maps:', error.message)
+          // Continue with empty array - user can create new mind maps
+          setCloudMindMaps([])
+        }
         
-        // Subscribe to real-time updates
-        const subscription = subscribeToUserMindMaps(user.uid, (mindMaps) => {
-          setCloudMindMaps(mindMaps)
-        })
-        setMindMapSubscription(subscription)
+        try {
+          // Subscribe to real-time updates
+          const subscription = subscribeToUserMindMaps(user.uid, (mindMaps) => {
+            setCloudMindMaps(mindMaps)
+          })
+          setMindMapSubscription(subscription)
+        } catch (error) {
+          console.warn('Could not subscribe to mind map updates:', error.message)
+          // Continue without real-time updates - user can still use the app
+        }
         
       } else {
         setUser(null)
@@ -305,6 +332,43 @@ function App() {
   // Mobile menu toggle function
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen)
+  }
+
+  // Chat message handler
+  const handleSendMessage = async () => {
+    if (!enhancedPrompt.trim() || isEnhancing) return
+    
+    setIsEnhancing(true)
+    const userMessage = enhancedPrompt.trim()
+    setEnhancedPrompt('')
+    
+    // Add user message to chat
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    
+    try {
+      // Call LLM to enhance the prompt
+      const enhancementPrompt = `You are an AI assistant helping to enhance startup ideas for mind map generation. The user has provided this input: "${startupIdea}"
+
+They want to discuss: "${userMessage}"
+
+Provide a helpful response that either:
+1. Enhances their original startup idea with the new information
+2. Answers their question about the startup concept
+3. Provides strategic advice for their business idea
+
+Keep your response concise but valuable, focusing on actionable insights.`
+      
+      const response = await callLLM(enhancementPrompt)
+      
+      // Add AI response to chat
+      setChatMessages(prev => [...prev, { role: 'assistant', content: response }])
+      
+    } catch (error) {
+      console.error('Error in chat:', error)
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }])
+    } finally {
+      setIsEnhancing(false)
+    }
   }
 
   // Close mobile menu on resize to desktop
@@ -608,20 +672,33 @@ Return ONLY the JSON object, no markdown or additional text.`
       if (mindMapResult && mindMapResult.id) {
         setMindMapData(mindMapResult)
         setMessage('Mind map generated successfully!')
+        // Automatically collapse the chatbox and show the mind map
+        setIsChatExpanded(false)
+        setIsMindMapExpanded(true)
         
         // Save to Firebase (legacy - single mind map)
         if (user) {
-          await saveMindMap(user.uid, mindMapResult)
+          try {
+            await saveMindMap(user.uid, mindMapResult)
+          } catch (error) {
+            console.warn('Could not save legacy mind map:', error.message)
+            // Continue without saving - user can still use the mind map
+          }
         }
         
         // Save to cloud gallery (new - multiple mind maps)
         if (user) {
-          const title = startupIdea.slice(0, 50) + (startupIdea.length > 50 ? '...' : '')
-          const result = await saveMindMapToGallery(user.uid, mindMapResult, title, startupIdea)
-          if (result.success) {
-            console.log('Mind map saved to cloud gallery with ID:', result.id)
-          } else {
-            console.error('Failed to save to cloud gallery:', result.error)
+          try {
+            const title = startupIdea.slice(0, 50) + (startupIdea.length > 50 ? '...' : '')
+            const result = await saveMindMapToGallery(user.uid, mindMapResult, title, startupIdea)
+            if (result.success) {
+              console.log('Mind map saved to cloud gallery with ID:', result.id)
+            } else {
+              console.error('Failed to save to cloud gallery:', result.error)
+            }
+          } catch (error) {
+            console.warn('Could not save to cloud gallery:', error.message)
+            // Continue without saving - user can still use the mind map
           }
         } else {
           // For non-authenticated users, save to localStorage as fallback
@@ -652,17 +729,22 @@ Return ONLY the JSON object, no markdown or additional text.`
   const updateMindMapData = useCallback(async (newData) => {
     setMindMapData(newData)
     if (user) {
-      await saveMindMap(user.uid, newData)
+      try {
+        await saveMindMap(user.uid, newData)
+      } catch (error) {
+        console.warn('Could not save mind map update:', error.message)
+        // Continue without saving - user can still use the mind map locally
+      }
     }
   }, [user])
 
   // Zoom functions
   const zoomIn = () => {
-    setZoomLevel(prev => Math.min(prev + 0.25, 3))
+    setZoomLevel(prev => Math.min(prev + 0.25, 2))
   }
 
   const zoomOut = () => {
-    setZoomLevel(prev => Math.max(prev - 0.25, 0.25))
+    setZoomLevel(prev => Math.max(prev - 0.25, 0.5))
   }
 
   const resetZoom = () => {
@@ -787,7 +869,12 @@ Return ONLY the JSON object, no markdown or additional text.`
     
     // Also update the original mindmap data for backwards compatibility
     if (user) {
-      await saveMindMap(user.uid, newTaskData[0]) // Save the root task as mindmap
+      try {
+        await saveMindMap(user.uid, newTaskData[0]) // Save the root task as mindmap
+      } catch (error) {
+        console.warn('Could not save task update:', error.message)
+        // Continue without saving - user can still use the tasks locally
+      }
     }
   }, [taskData, user])
 
@@ -809,7 +896,12 @@ Return ONLY the JSON object, no markdown or additional text.`
     
     // Also update the original mindmap data for backwards compatibility
     if (user && newTaskData.length > 0) {
-      await saveMindMap(user.uid, newTaskData[0])
+      try {
+        await saveMindMap(user.uid, newTaskData[0])
+      } catch (error) {
+        console.warn('Could not save task deletion:', error.message)
+        // Continue without saving - user can still use the tasks locally
+      }
     }
   }, [taskData, user])
 
@@ -836,7 +928,12 @@ Return ONLY the JSON object, no markdown or additional text.`
     
     // Also update the original mindmap data for backwards compatibility
     if (user) {
-      await saveMindMap(user.uid, newTaskData[0])
+      try {
+        await saveMindMap(user.uid, newTaskData[0])
+      } catch (error) {
+        console.warn('Could not save new task:', error.message)
+        // Continue without saving - user can still use the tasks locally
+      }
     }
   }, [taskData, user])
 
@@ -918,12 +1015,13 @@ Return ONLY the JSON object, no markdown or additional text.`
     }
   }, [currentText, currentIdeaIndex, isTyping, startupIdea, isTextareaFocused])
 
-    if (showGenerationView) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-black via-black to-black relative overflow-hidden">
-          {/* Background gradients */}
-          <div className="absolute inset-0 bg-gradient-to-br from-black/90 via-purple-950/5 to-black/95"></div>
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(15,10,25,0.08),transparent_85%)]"></div>
+  if (showGenerationView) {
+    // Desktop view
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-black to-black relative overflow-hidden">
+        {/* Background gradients */}
+        <div className="absolute inset-0 bg-gradient-to-br from-black/90 via-purple-950/5 to-black/95"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(15,10,25,0.08),transparent_85%)]"></div>
           
           <div className="relative z-10 h-screen flex flex-col">
             {/* Header */}
@@ -970,10 +1068,17 @@ Return ONLY the JSON object, no markdown or additional text.`
             </header>
 
             {/* Split Screen Content */}
-            <div className="flex-1 flex overflow-hidden">
-              {/* Left Side - Chat Interface */}
-              {isChatExpanded && (
-                <div className="w-1/4 border-r border-slate-700/50 flex flex-col">
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Chat Interface Section */}
+              <div className={`transition-all duration-500 ease-in-out overflow-hidden ${
+                isChatExpanded && !isMindMapExpanded 
+                  ? 'h-full flex' 
+                  : isMindMapExpanded 
+                  ? 'h-0 opacity-0 transform -translate-y-full' 
+                  : 'h-0'
+              }`}>
+                {(isChatExpanded && !isMindMapExpanded) && (
+                <div className="w-full border-b border-slate-700/50 flex flex-col">
                   {/* Chat Header */}
                   <div className="p-3 border-b border-slate-700/50">
                     <div className="flex items-center justify-between">
@@ -1056,11 +1161,20 @@ Return ONLY the JSON object, no markdown or additional text.`
                   </div>
                 </div>
                 </div>
-              )}
+                )}
+              </div>
 
-              {/* Sidebar (when chat is collapsed) */}
-              {!isChatExpanded && (
-                <div className="w-16 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col items-center py-4 space-y-4">
+              {/* Mind Map Section */}
+              <div className={`transition-all duration-500 ease-in-out overflow-hidden flex ${
+                isMindMapExpanded 
+                  ? 'h-full' 
+                  : isChatExpanded 
+                  ? 'h-0 opacity-0 transform translate-y-full' 
+                  : 'h-full'
+              }`}>
+                {/* Sidebar (when both are collapsed) */}
+                {!isChatExpanded && !isMindMapExpanded && (
+                  <div className="w-16 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col items-center py-4 space-y-4">
                   {/* Expand Chat Button */}
                   <button 
                     onClick={() => setIsChatExpanded(true)}
@@ -1104,11 +1218,11 @@ Return ONLY the JSON object, no markdown or additional text.`
                       </svg>
                     </div>
                   </div>
-                </div>
-              )}
+                  </div>
+                )}
 
-              {/* Right Side - Mind Map Preview */}
-              <div className={`${isChatExpanded ? 'w-3/4' : 'flex-1'} flex flex-col relative`}>
+                {/* Mind Map Preview */}
+                <div className={`${isMindMapExpanded ? 'w-full h-full' : isChatExpanded ? 'w-full' : 'flex-1'} flex flex-col relative`}>
                 {/* Preview Header */}
                 <div className="p-3 border-b border-slate-700/50">
                   <div className="flex items-center justify-between">
@@ -1124,6 +1238,20 @@ Return ONLY the JSON object, no markdown or additional text.`
                           <span className="text-lg">Generating...</span>
                         </div>
                       )}
+                      <button
+                        onClick={() => setIsMindMapExpanded(!isMindMapExpanded)}
+                        className="p-3 sm:p-2 text-white hover:text-purple-300 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all duration-200 touch-target"
+                        title={isMindMapExpanded ? 'Exit full screen' : 'Expand to full screen'}
+                      >
+                        <svg 
+                          className={`w-5 h-5 transform transition-transform duration-200 ${isMindMapExpanded ? 'rotate-180' : ''}`} 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1158,20 +1286,9 @@ Return ONLY the JSON object, no markdown or additional text.`
                         </div>
                       </div>
 
-                      {/* Actual Tasks Filter - Top Center */}
-                      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10">
-                        <div className="bg-slate-800/90 backdrop-blur-sm rounded-lg p-2 border border-slate-600/50">
-                          <label className="flex items-center space-x-2 text-sm text-white">
-                            <input
-                              type="checkbox"
-                              checked={showActualTasksOnly}
-                              onChange={(e) => setShowActualTasksOnly(e.target.checked)}
-                              className="rounded text-purple-500 focus:ring-purple-500"
-                            />
-                            <span>Show Actual Tasks Only</span>
-                          </label>
-                        </div>
-                      </div>
+
+
+
 
                       {/* Zoom Controls - Top Right (Flowchart only) */}
                       {viewMode === 'flowchart' && (
@@ -1241,7 +1358,6 @@ Return ONLY the JSON object, no markdown or additional text.`
                             onUpdateTask={updateTaskData}
                             onDeleteTask={deleteTaskData}
                             onAddTask={addTaskData}
-                            showActualTasksOnly={showActualTasksOnly}
                           />
                         )}
                       </div>
@@ -1305,6 +1421,7 @@ Return ONLY the JSON object, no markdown or additional text.`
                       </div>
                     </div>
                   )}
+                </div>
                 </div>
               </div>
             </div>
@@ -1413,8 +1530,10 @@ Return ONLY the JSON object, no markdown or additional text.`
             </div>
           </div>
         </header>
+        )}
 
         {/* Mobile Header */}
+        {!isMindMapExpanded && !isChatSectionExpanded && (
         <header className="md:hidden w-full px-4 py-4">
           <div className="flex items-center justify-between">
             {/* Logo */}
@@ -1436,9 +1555,10 @@ Return ONLY the JSON object, no markdown or additional text.`
             </button>
           </div>
         </header>
+        )}
         
         {/* Mobile Menu Dropdown */}
-        {isMobileMenuOpen && (
+        {!isMindMapExpanded && !isChatSectionExpanded && isMobileMenuOpen && (
           <div className="md:hidden bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50">
             <div className="px-4 py-4 space-y-4">
               {/* Social Icons */}
@@ -1512,17 +1632,40 @@ Return ONLY the JSON object, no markdown or additional text.`
         <div className="flex-1 flex flex-col justify-center px-3 sm:px-4 md:px-6 py-8 sm:py-12">
           <div className="max-w-4xl mx-auto w-full">
             {/* Header */}
+            {!isChatSectionExpanded && (
             <div className="text-center mb-8 sm:mb-12">
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-3 sm:mb-4 tracking-tight px-2">
                 Idea to <span className="moving-purple-gradient">Billion Dollar Roadmap</span>
-          </h1>
+              </h1>
               <p className="text-base sm:text-lg md:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed px-4">
                 AI-powered strategic planning that transforms startup visions into actionable roadmaps for unicorn-level success
-          </p>
-        </div>
+              </p>
+            </div>
+            )}
 
         {/* Input Section */}
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8 mb-6 sm:mb-8 shadow-2xl">
+            <div className={`bg-slate-800/50 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8 mb-6 sm:mb-8 shadow-2xl ${isChatSectionExpanded ? 'mobile-fullscreen bg-gradient-to-br from-black via-black to-black w-full h-full max-w-none mx-0 rounded-none p-4 sm:p-8 overflow-y-auto' : ''}`}>
+              {/* Section Header */}
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className={`text-xl sm:text-2xl font-bold text-white ${isChatSectionExpanded ? 'text-3xl' : ''}`}>
+                  {isChatSectionExpanded ? 'AI Enhanced Prompt - Full View' : 'AI Enhanced Prompt'}
+                </h2>
+                <button
+                  onClick={() => setIsChatSectionExpanded(!isChatSectionExpanded)}
+                  className="p-3 sm:p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-700/50 touch-target"
+                  title={isChatSectionExpanded ? 'Exit Full View' : 'Expand to Full View'}
+                >
+                  {isChatSectionExpanded ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    </svg>
+                  )}
+                </button>
+              </div>
               <div className="mb-4 sm:mb-6">
                 <div className="relative">
           <textarea
@@ -1543,7 +1686,7 @@ Return ONLY the JSON object, no markdown or additional text.`
               }
             }}
                     placeholder={startupIdea || isTextareaFocused ? "" : isAuthenticated ? "Start typing your billion-dollar idea or watch AI suggestions..." : "Sign in to start typing your billion-dollar idea..."}
-                    className={`w-full h-28 sm:h-32 md:h-36 px-3 sm:px-4 py-2 sm:py-3 bg-slate-900/50 border border-slate-600/50 rounded-lg sm:rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none text-sm sm:text-base md:text-lg leading-relaxed ${!startupIdea && !isTextareaFocused ? 'text-purple-300' : 'text-white'}`}
+                    className={`w-full ${isChatSectionExpanded ? 'h-40 sm:h-48 md:h-56' : 'h-28 sm:h-32 md:h-36'} px-3 sm:px-4 py-2 sm:py-3 bg-slate-900/50 border border-slate-600/50 rounded-lg sm:rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none text-sm sm:text-base md:text-lg leading-relaxed ${!startupIdea && !isTextareaFocused ? 'text-purple-300' : 'text-white'}`}
                     onFocus={() => {
                       if (!isAuthenticated) {
                         handleAuthRequired()
@@ -1653,7 +1796,7 @@ Return ONLY the JSON object, no markdown or additional text.`
         </div>
 
         {/* Mind Map Gallery */}
-        {(user || (!user && savedMindMaps.length > 0)) && (
+        {!isChatSectionExpanded && (user || (!user && savedMindMaps.length > 0)) && (
           <div className="max-w-4xl mx-auto w-full mb-8">
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 shadow-2xl">
               <div className="flex items-center justify-between mb-6">

@@ -312,7 +312,7 @@ const FlowchartView = ({
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newZoom = Math.max(0.25, Math.min(3, zoomLevel + delta));
+      const newZoom = Math.max(0.5, Math.min(2, zoomLevel + delta));
       onZoomChange(newZoom);
     }
   }, [zoomLevel, onZoomChange]);

@@ -175,3 +175,26 @@
   -webkit-text-fill-color: transparent;
   animation: moving-gradient 8s ease-in-out infinite;
 }
+
+/* Mobile full-screen overlay fixes */
+@layer utilities {
+  .mobile-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 50;
+    touch-action: manipulation;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Ensure buttons are touch-friendly on mobile */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}

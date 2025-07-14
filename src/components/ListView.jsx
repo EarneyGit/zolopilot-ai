@@ -61,7 +61,7 @@ const ListView = ({
     // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter(task => 
-        task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (task.title || task.text || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         task.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         task.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
       );
@@ -102,16 +102,16 @@ const ListView = ({
           bValue = priorityOrder[b.priority] || 0;
           break;
         case 'title':
-          aValue = a.title.toLowerCase();
-          bValue = b.title.toLowerCase();
+          aValue = (a.title || a.text || '').toLowerCase();
+          bValue = (b.title || b.text || '').toLowerCase();
           break;
         case 'status':
           aValue = a.status;
           bValue = b.status;
           break;
         default:
-          aValue = a.title.toLowerCase();
-          bValue = b.title.toLowerCase();
+          aValue = (a.title || a.text || '').toLowerCase();
+          bValue = (b.title || b.text || '').toLowerCase();
       }
       
       if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
@@ -185,64 +185,92 @@ const ListView = ({
   return (
     <div className="list-view h-full flex flex-col">
       {/* Header Controls */}
-      <div className="flex-shrink-0 p-4 border-b border-slate-600/50">
-        <div className="flex items-center justify-between mb-4">
+      <div className="flex-shrink-0 p-6 border-b border-slate-600/50">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 mt-4 sm:mt-0">
           <h3 className="text-xl font-bold text-white">Task List</h3>
-          <button
-            onClick={onAddTask}
-            className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-purple-500/25 text-sm"
-          >
-            + Add Task
-          </button>
         </div>
         
         {/* Search and Filters */}
-        <div className="flex flex-wrap gap-4 mb-4">
-          {/* Search */}
-          <div className="flex-1 min-w-64">
+        <div className="space-y-5 mb-6 mt-8 sm:mt-12 px-2">
+          {/* Search Bar - Full Width */}
+          <div className="w-full">
             <input
               type="text"
               placeholder="Search tasks..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm shadow-sm"
             />
           </div>
           
-          {/* Status Filter */}
-          <select
-            value={filterBy}
-            onChange={(e) => setFilterBy(e.target.value)}
-            className="px-3 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
-          >
-            <option value="all">All Tasks</option>
-            <option value="actual">Actual Tasks</option>
-            <option value="completed">Completed</option>
-            <option value="blocked">Blocked</option>
-            <option value="overdue">Overdue</option>
-            <option value="delegated">Delegated</option>
-          </select>
+          {/* Add Task Button */}
+          <div className="w-full">
+            <button
+              onClick={onAddTask}
+              className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-6 py-3 rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-purple-500/25 text-sm flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Task
+            </button>
+          </div>
           
-          {/* Sort By */}
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="px-3 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
-          >
-            <option value="dueDate">Due Date</option>
-            <option value="priority">Priority</option>
-            <option value="title">Title</option>
-            <option value="status">Status</option>
-          </select>
-          
-          {/* Sort Order */}
-          <button
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="px-3 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white hover:bg-slate-700/50 transition-colors text-sm"
-            title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-          >
-            {sortOrder === 'asc' ? '↑' : '↓'}
-          </button>
+          {/* Filter Controls - Properly Spaced */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Status Filter */}
+            <div className="flex-shrink-0 relative">
+              <select
+                value={filterBy}
+                onChange={(e) => setFilterBy(e.target.value)}
+                className="px-4 py-3 pr-10 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm min-w-[130px] shadow-sm appearance-none h-12"
+              >
+                <option value="all">All Tasks</option>
+                <option value="actual">Actual Tasks</option>
+                <option value="completed">Completed</option>
+                <option value="blocked">Blocked</option>
+                <option value="overdue">Overdue</option>
+                <option value="delegated">Delegated</option>
+              </select>
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            
+            {/* Sort By */}
+            <div className="flex-shrink-0 relative">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-4 py-3 pr-10 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm min-w-[110px] shadow-sm appearance-none h-12"
+              >
+                <option value="dueDate">Due Date</option>
+                <option value="priority">Priority</option>
+                <option value="title">Title</option>
+                <option value="status">Status</option>
+              </select>
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            
+            {/* Sort Order */}
+            <div className="flex-shrink-0">
+              <button
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white hover:bg-slate-700/50 transition-colors text-sm w-12 h-12 flex items-center justify-center shadow-sm"
+                title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={sortOrder === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -269,7 +297,7 @@ const ListView = ({
                 {task.children && task.children.length > 0 && (
                   <button
                     onClick={() => toggleExpansion(task.id)}
-                    className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition-colors mr-2"
+                    className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition-colors mr-2 text-xs leading-none"
                   >
                     {expandedTasks.has(task.id) ? '▼' : '▶'}
                   </button>
@@ -296,7 +324,7 @@ const ListView = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2">
                     <span className={`font-medium ${task.completed ? 'line-through opacity-60' : ''}`}>
-                      {task.title}
+                      {task.title || task.text || 'Untitled'}
                     </span>
                     
                     {/* Tags */}
@@ -373,4 +401,4 @@ const ListView = ({
   );
 };
 
-export default ListView; 
+export default ListView;

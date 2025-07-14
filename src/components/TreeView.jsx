@@ -487,8 +487,8 @@ const TreeView = ({
     };
   }, [tasks]);
 
-  // Canvas mouse handlers for infinite panning
-  const handleMouseDown = useCallback((e) => {
+  // Canvas mouse and touch handlers for infinite panning
+  const handlePointerDown = useCallback((e) => {
     // Simplified approach: if it's not a TreeNode element, allow dragging
     const target = e.target;
     const isTreeNode = target.closest('.bg-gray-800') || 
@@ -499,21 +499,25 @@ const TreeView = ({
     
     if (!isTreeNode) {
       setIsDragging(true);
-      setDragStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y });
+      const clientX = e.clientX || (e.touches && e.touches[0]?.clientX) || 0;
+      const clientY = e.clientY || (e.touches && e.touches[0]?.clientY) || 0;
+      setDragStart({ x: clientX - panPosition.x, y: clientY - panPosition.y });
       e.preventDefault();
     }
   }, [panPosition.x, panPosition.y]);
 
-  const handleMouseMove = useCallback((e) => {
+  const handlePointerMove = useCallback((e) => {
     if (isDragging && onPanChange) {
-      const newX = e.clientX - dragStart.x;
-      const newY = e.clientY - dragStart.y;
+      const clientX = e.clientX || (e.touches && e.touches[0]?.clientX) || 0;
+      const clientY = e.clientY || (e.touches && e.touches[0]?.clientY) || 0;
+      const newX = clientX - dragStart.x;
+      const newY = clientY - dragStart.y;
       onPanChange({ x: newX, y: newY });
       e.preventDefault();
     }
   }, [isDragging, dragStart.x, dragStart.y, onPanChange]);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(() => {
     setIsDragging(false);
   }, []);
 
@@ -522,7 +526,7 @@ const TreeView = ({
     if (onZoomChange) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newZoom = Math.max(0.25, Math.min(3, zoomLevel + delta));
+      const newZoom = Math.max(0.5, Math.min(2, zoomLevel + delta));
       onZoomChange(newZoom);
     }
   }, [zoomLevel, onZoomChange]);
@@ -532,19 +536,27 @@ const TreeView = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Use capture phase for mousedown to ensure we catch it before child elements
-    canvas.addEventListener('mousedown', handleMouseDown, true);
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    // Use capture phase for pointer events to ensure we catch it before child elements
+    canvas.addEventListener('mousedown', handlePointerDown, true);
+    canvas.addEventListener('touchstart', handlePointerDown, true);
+    document.addEventListener('mousemove', handlePointerMove);
+    document.addEventListener('touchmove', handlePointerMove, { passive: false });
+    document.addEventListener('mouseup', handlePointerUp);
+    document.addEventListener('touchend', handlePointerUp);
+    document.addEventListener('touchcancel', handlePointerUp);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
-      canvas.removeEventListener('mousedown', handleMouseDown, true);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('mousedown', handlePointerDown, true);
+      canvas.removeEventListener('touchstart', handlePointerDown, true);
+      document.removeEventListener('mousemove', handlePointerMove);
+      document.removeEventListener('touchmove', handlePointerMove);
+      document.removeEventListener('mouseup', handlePointerUp);
+      document.removeEventListener('touchend', handlePointerUp);
+      document.removeEventListener('touchcancel', handlePointerUp);
       canvas.removeEventListener('wheel', handleWheel);
     };
-  }, [handleMouseDown, handleMouseMove, handleMouseUp, handleWheel]);
+  }, [handlePointerDown, handlePointerMove, handlePointerUp, handleWheel]);
 
   // Update task function
   const updateTask = (taskId, updatedTask) => {
