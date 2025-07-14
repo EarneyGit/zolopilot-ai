@@ -203,6 +203,9 @@ const TreeView = ({
   const [connections, setConnections] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isPinching, setIsPinching] = useState(false);
+  const [lastPinchDistance, setLastPinchDistance] = useState(0);
+  const [initialZoom, setInitialZoom] = useState(1);
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
 
@@ -451,6 +454,12 @@ const TreeView = ({
         // Recalculate connections with actual DOM dimensions after rendering
         const recalcTimer = setTimeout(() => {
           recalculateConnectionsWithActualDimensions();
+          
+          // Debug logging for mobile issues
+          if (window.innerWidth <= 768) {
+            console.log('Mobile TreeView - Connections:', connections.length);
+            console.log('Mobile TreeView - Node positions:', nodePositions.size);
+          }
         }, 500);
         
         return () => clearTimeout(recalcTimer);
@@ -521,6 +530,74 @@ const TreeView = ({
     setIsDragging(false);
   }, []);
 
+  // Helper function to calculate distance between two touch points
+  const getTouchDistance = (touches) => {
+    if (touches.length < 2) return 0;
+    const touch1 = touches[0];
+    const touch2 = touches[1];
+    const dx = touch1.clientX - touch2.clientX;
+    const dy = touch1.clientY - touch2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  // Handle pinch-to-zoom
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length === 2) {
+      // Two fingers - start pinch zoom
+      setIsPinching(true);
+      setIsDragging(false);
+      const distance = getTouchDistance(e.touches);
+      setLastPinchDistance(distance);
+      setInitialZoom(zoomLevel);
+      e.preventDefault();
+    } else if (e.touches.length === 1 && !isPinching) {
+      // Single finger - start panning
+      const target = e.target;
+      const isTreeNode = target.closest('.bg-gray-800') || 
+                        target.closest('button') || 
+                        target.closest('textarea') ||
+                        target.tagName?.toLowerCase() === 'button' ||
+                        target.tagName?.toLowerCase() === 'textarea';
+      
+      if (!isTreeNode) {
+        setIsDragging(true);
+        const touch = e.touches[0];
+        setDragStart({ x: touch.clientX - panPosition.x, y: touch.clientY - panPosition.y });
+        e.preventDefault();
+      }
+    }
+  }, [zoomLevel, isPinching, panPosition.x, panPosition.y]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (e.touches.length === 2 && isPinching && onZoomChange) {
+      // Two fingers - pinch zoom
+      const distance = getTouchDistance(e.touches);
+      if (lastPinchDistance > 0) {
+        const scale = distance / lastPinchDistance;
+        const newZoom = Math.max(0.3, Math.min(3, initialZoom * scale));
+        onZoomChange(newZoom);
+      }
+      e.preventDefault();
+    } else if (e.touches.length === 1 && isDragging && onPanChange && !isPinching) {
+      // Single finger - pan
+      const touch = e.touches[0];
+      const newX = touch.clientX - dragStart.x;
+      const newY = touch.clientY - dragStart.y;
+      onPanChange({ x: newX, y: newY });
+      e.preventDefault();
+    }
+  }, [isPinching, lastPinchDistance, initialZoom, isDragging, dragStart.x, dragStart.y, onZoomChange, onPanChange]);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (e.touches.length < 2) {
+      setIsPinching(false);
+      setLastPinchDistance(0);
+    }
+    if (e.touches.length === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
   // Handle wheel zoom
   const handleWheel = useCallback((e) => {
     if (onZoomChange) {
@@ -538,25 +615,25 @@ const TreeView = ({
 
     // Use capture phase for pointer events to ensure we catch it before child elements
     canvas.addEventListener('mousedown', handlePointerDown, true);
-    canvas.addEventListener('touchstart', handlePointerDown, true);
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false, capture: true });
     document.addEventListener('mousemove', handlePointerMove);
-    document.addEventListener('touchmove', handlePointerMove, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('mouseup', handlePointerUp);
-    document.addEventListener('touchend', handlePointerUp);
-    document.addEventListener('touchcancel', handlePointerUp);
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
     canvas.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       canvas.removeEventListener('mousedown', handlePointerDown, true);
-      canvas.removeEventListener('touchstart', handlePointerDown, true);
+      canvas.removeEventListener('touchstart', handleTouchStart);
       document.removeEventListener('mousemove', handlePointerMove);
-      document.removeEventListener('touchmove', handlePointerMove);
+      document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('mouseup', handlePointerUp);
-      document.removeEventListener('touchend', handlePointerUp);
-      document.removeEventListener('touchcancel', handlePointerUp);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchEnd);
       canvas.removeEventListener('wheel', handleWheel);
     };
-  }, [handlePointerDown, handlePointerMove, handlePointerUp, handleWheel]);
+  }, [handlePointerDown, handlePointerMove, handlePointerUp, handleTouchStart, handleTouchMove, handleTouchEnd, handleWheel]);
 
   // Update task function
   const updateTask = (taskId, updatedTask) => {
@@ -622,7 +699,10 @@ const TreeView = ({
             #0D1518
           `,
           backgroundSize: '20px 20px',
-          cursor: isDragging ? 'grabbing' : 'grab'
+          cursor: isDragging ? 'grabbing' : 'grab',
+          touchAction: 'none', // Prevent default touch behaviors
+          userSelect: 'none',
+          WebkitUserSelect: 'none'
         }}
       >
         <div
@@ -642,7 +722,16 @@ const TreeView = ({
         {/* SVG for connection lines */}
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
-          style={{ zIndex: 1 }}
+          style={{ 
+            zIndex: 1,
+            overflow: 'visible',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%'
+          }}
+          preserveAspectRatio="none"
         >
           {connections.map(connection => {
             // Skip invalid connections
@@ -666,7 +755,9 @@ const TreeView = ({
                   x2={from.x}
                   y2={midY}
                   stroke="#10B981"
-                  strokeWidth="3"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  style={{ vectorEffect: 'non-scaling-stroke' }}
                 />
                 {/* Horizontal line */}
                 <line
@@ -675,7 +766,9 @@ const TreeView = ({
                   x2={to.x}
                   y2={midY}
                   stroke="#10B981"
-                  strokeWidth="3"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  style={{ vectorEffect: 'non-scaling-stroke' }}
                 />
                 {/* Vertical line to child */}
                 <line
@@ -684,7 +777,9 @@ const TreeView = ({
                   x2={to.x}
                   y2={to.y}
                   stroke="#10B981"
-                  strokeWidth="3"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  style={{ vectorEffect: 'non-scaling-stroke' }}
                 />
               </g>
             );
