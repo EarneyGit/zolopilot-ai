@@ -1534,7 +1534,7 @@ Return ONLY the JSON object, no markdown or additional text.`
 
         {/* Mobile Header */}
         {!isMindMapExpanded && !isChatSectionExpanded && (
-        <header className="md:hidden w-full px-4 py-4">
+        <header className="md:hidden w-full px-4" style={{paddingTop: '6px', paddingBottom: '6px'}}>
           <div className="flex items-center justify-between">
             {/* Logo */}
             <h2 className="text-2xl font-bold text-white tracking-wide">Zolopilot AI</h2>
