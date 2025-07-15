@@ -6,10 +6,17 @@ import LoadingSpinner from './components/LoadingSpinner'
 import TreeView from './components/TreeView'
 import ListView from './components/ListView'
 import AuthModal from './components/AuthModal'
+import ProfilePage from './components/earneygit'
+import SettingsPage from './components/SettingsPage'
+import TrendingIdeas from './components/TrendingIdeas'
+import PricingPage from './components/PricingPage'
 
 // MongoDB integration removed - using Firebase only
 
 import { processUserInput, analyzeInputQuality, ENHANCEMENT_PRESETS } from './services/promptEnhancer'
+import { validateMindMapData, safeJsonParse, sanitizeText } from './utils/jsonValidator'
+import { initializeSecurity, validateApiKeys, INPUT_VALIDATION } from './config/security'
+import { runSetupValidation } from './utils/setupValidator'
 
 // AI-powered startup ideas for typewriter effect - moved outside component
 const aiStartupIdeas = [
@@ -21,6 +28,21 @@ const aiStartupIdeas = [
 ]
 
 function App() {
+  // Initialize security checks with detailed validation
+  useEffect(() => {
+    // Run comprehensive setup validation
+    const validationResults = runSetupValidation();
+    
+    // Show user-friendly messages based on validation results
+    if (validationResults.overall.status === 'error') {
+      console.error('❌ Setup incomplete. Please check the console for details.');
+    } else if (validationResults.overall.status === 'warning') {
+      console.warn('⚠️ Setup has warnings. Some features may not work properly.');
+    } else {
+      console.log('✅ Setup validation passed. All systems ready!');
+    }
+  }, []);
+
   // Core state management with localStorage persistence
   const [startupIdea, setStartupIdea] = useState(() => {
     const saved = localStorage.getItem('zolopilot_startupIdea')
@@ -56,7 +78,7 @@ function App() {
     return saved === 'true' && savedMindMap && savedMindMap !== 'null'
   })
   const [isTextareaFocused, setIsTextareaFocused] = useState(false)
-  const [isChatExpanded, setIsChatExpanded] = useState(true)
+  const [isChatExpanded, setIsChatExpanded] = useState(false)
   const [isMindMapExpanded, setIsMindMapExpanded] = useState(false)
   const [isChatSectionExpanded, setIsChatSectionExpanded] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(1)
@@ -70,10 +92,19 @@ function App() {
   
   // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  
+  // Navigation state
+  const [currentPage, setCurrentPage] = useState('generation') // 'generation', 'profile', 'settings', 'trending', 'pricing'
 
   // LLM Configuration (hardcoded in code, can be changed by developers)
   const [selectedLLM] = useState('gemini') // Options: 'gemini', 'openai', 'anthropic'
-  const [llmApiKey] = useState('AIzaSyDOjHxvf4EzxLLxVrotj9TKMDRc-BfLtd0') // Your Gemini API key
+  // SECURITY FIX: Using environment variables instead of hardcoded API keys
+  const [llmApiKey] = useState(
+    selectedLLM === 'gemini' ? import.meta.env.VITE_GEMINI_API_KEY :
+    selectedLLM === 'openai' ? import.meta.env.VITE_OPENAI_API_KEY :
+    selectedLLM === 'anthropic' ? import.meta.env.VITE_ANTHROPIC_API_KEY :
+    ''
+  ) // API keys from environment variables
   const [enablePromptEnhancement, setEnablePromptEnhancement] = useState(true) // Enable two-stage LLM processing
   const [inputQuality, setInputQuality] = useState(null) // Track input quality analysis
   const [enhancedPrompt, setEnhancedPrompt] = useState(() => {
@@ -94,6 +125,15 @@ function App() {
   // Chat functionality state
   const [chatMessages, setChatMessages] = useState([])
   const [isEnhancing, setIsEnhancing] = useState(false)
+  
+  // Share functionality state
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
+  
+  // Guest view state
+  const [isGuestView, setIsGuestView] = useState(false)
+  const [guestMindMapData, setGuestMindMapData] = useState(null)
 
 
   // MongoDB integration removed - using Firebase only
@@ -114,19 +154,19 @@ function App() {
   }, [mindMapData])
 
   useEffect(() => {
-    localStorage.setItem('zolopilot_showGenerationView', showGenerationView.toString())
+    localStorage.setItem('zolopilot_showGenerationView', (showGenerationView ?? false).toString())
   }, [showGenerationView])
 
   useEffect(() => {
-    localStorage.setItem('zolopilot_message', message)
+    localStorage.setItem('zolopilot_message', message || '')
   }, [message])
 
   useEffect(() => {
-    localStorage.setItem('zolopilot_enhancedPrompt', enhancedPrompt)
+    localStorage.setItem('zolopilot_enhancedPrompt', enhancedPrompt || '')
   }, [enhancedPrompt])
 
   useEffect(() => {
-    localStorage.setItem('zolopilot_savedMindMaps', JSON.stringify(savedMindMaps))
+    localStorage.setItem('zolopilot_savedMindMaps', JSON.stringify(savedMindMaps || []))
   }, [savedMindMaps])
 
   // Firebase authentication
@@ -190,6 +230,27 @@ function App() {
     }
   }, [mindMapSubscription])
 
+  // URL parameter handling for shared links
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const sharedData = urlParams.get('data')
+    
+    if (sharedData) {
+      try {
+        const decodedData = JSON.parse(decodeURIComponent(sharedData))
+        setIsGuestView(true)
+        setGuestMindMapData(decodedData.mindMapData)
+        setStartupIdea(decodedData.prompt || 'Shared Mind Map')
+        setShowGenerationView(true)
+        setIsChatExpanded(false)
+        setIsMindMapExpanded(true)
+      } catch (error) {
+        console.error('Error parsing shared data:', error)
+        // If shared data is invalid, continue with normal app flow
+      }
+    }
+  }, [])
+
   // LLM API call function
   const callLLM = async (prompt, isJsonOutput = false) => {
     const configs = {
@@ -210,7 +271,12 @@ function App() {
             maxOutputTokens: 8192,
           }
         },
-        responseParser: (data) => data.candidates[0].content.parts[0].text
+        responseParser: (data) => {
+          if (!data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            throw new Error('Invalid response format from Gemini API')
+          }
+          return data.candidates[0].content.parts[0].text
+        }
       },
       openai: {
         url: 'https://api.openai.com/v1/chat/completions',
@@ -227,7 +293,12 @@ function App() {
           temperature: 0.7,
           max_tokens: 4096
         },
-        responseParser: (data) => data.choices[0].message.content
+        responseParser: (data) => {
+          if (!data?.choices?.[0]?.message?.content) {
+            throw new Error('Invalid response format from OpenAI API')
+          }
+          return data.choices[0].message.content
+        }
       },
       anthropic: {
         url: 'https://api.anthropic.com/v1/messages',
@@ -244,7 +315,12 @@ function App() {
             content: prompt
           }]
         },
-        responseParser: (data) => data.content[0].text
+        responseParser: (data) => {
+          if (!data?.content?.[0]?.text) {
+            throw new Error('Invalid response format from Anthropic API')
+          }
+          return data.content[0].text
+        }
       }
     }
 
@@ -403,6 +479,8 @@ Keep your response concise but valuable, focusing on actionable insights.`
 
     setLoading(true)
     setError('')
+    setMindMapData(null) // Clear previous mind map data to prevent showing old data
+    setTaskData([]) // Clear previous task data
     setEnhancedPrompt('') // Clear any previous enhanced prompt
     setMessage('Enhancing your input with AI...')
     // Don't set showGenerationView yet - wait for approval dialog
@@ -459,8 +537,495 @@ Keep your response concise but valuable, focusing on actionable insights.`
     }
   }
   
+  // Share functionality functions
+  const handleShareClick = () => {
+    console.log('handleShareClick called, mindMapData exists:', !!mindMapData);
+    if (mindMapData) {
+      // Create share data object
+      const shareData = {
+        mindMapData: mindMapData,
+        prompt: startupIdea,
+        title: mindMapData.text || 'Shared Mind Map'
+      }
+      
+      // Encode the data for URL
+      const encodedData = encodeURIComponent(JSON.stringify(shareData))
+      const url = `${window.location.origin}${window.location.pathname}?data=${encodedData}`
+      
+      console.log('Setting shareUrl to:', url);
+      setShareUrl(url)
+      console.log('Setting showShareModal to true');
+      setShowShareModal(true)
+    }
+  }
 
-  
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      alert('Link copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+      alert('Failed to copy link. Please try again.');
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      // Import jsPDF and html2canvas dynamically
+      console.log('Starting PDF generation...');
+      const { jsPDF } = await import('jspdf');
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default || html2canvasModule;
+      
+      console.log('Libraries loaded:', { jsPDF: typeof jsPDF, html2canvas: typeof html2canvas });
+      
+      if (typeof jsPDF !== 'function') {
+        throw new Error('jsPDF library failed to load properly');
+      }
+      
+      // Find the mind map container
+      const mindMapElement = document.querySelector('.tree-view');
+      if (!mindMapElement) {
+        throw new Error('Mind map element not found');
+      }
+      
+      console.log('Mind map element found:', !!mindMapElement);
+      
+      // Get all nodes and connections for creating a flattened version
+      const allNodes = mindMapElement.querySelectorAll('[data-node-id]');
+      const svgElement = mindMapElement.querySelector('svg');
+      
+      console.log('Found nodes:', allNodes.length, 'SVG:', !!svgElement);
+      
+      if (allNodes.length === 0) {
+        throw new Error('No mind map nodes found');
+      }
+      
+      // Create a temporary container for flattened mind map
+      const tempContainer = document.createElement('div');
+      tempContainer.style.cssText = `
+        position: fixed;
+        top: -10000px;
+        left: -10000px;
+        width: 2000px;
+        height: 1500px;
+        background: linear-gradient(135deg, #0D1518 0%, #1a2332 100%);
+        z-index: -1000;
+        overflow: visible;
+        font-family: system-ui, -apple-system, sans-serif;
+      `;
+      
+      // Add essential CSS styles for proper text rendering
+      const styleElement = document.createElement('style');
+      styleElement.textContent = `
+        .break-words {
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          word-break: break-word;
+        }
+        .text-center {
+          text-align: center;
+        }
+        .min-w-\\[160px\\] { min-width: 160px; }
+        .min-w-\\[180px\\] { min-width: 180px; }
+        .min-w-\\[200px\\] { min-width: 200px; }
+        .max-w-\\[220px\\] { max-width: 220px; }
+        .max-w-\\[250px\\] { max-width: 250px; }
+        .max-w-\\[300px\\] { max-width: 300px; }
+        .p-2 { padding: 0.5rem; }
+        .p-3 { padding: 0.75rem; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-md { font-size: 1rem; line-height: 1.5rem; }
+        .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+        .font-semibold { font-weight: 600; }
+        .font-bold { font-weight: 700; }
+        .rounded { border-radius: 0.25rem; }
+        .rounded-lg { border-radius: 0.5rem; }
+        .border { border-width: 1px; }
+      `;
+      tempContainer.appendChild(styleElement);
+      document.body.appendChild(tempContainer);
+      
+      // Calculate node bounds to determine the mind map area
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      const nodeData = [];
+      
+      allNodes.forEach(node => {
+        const rect = node.getBoundingClientRect();
+        const mindMapRect = mindMapElement.getBoundingClientRect();
+        
+        // Get the node's position relative to the mind map container
+        const style = window.getComputedStyle(node);
+        const transform = style.transform;
+        
+        // Extract position from the node's absolute positioning
+        let nodeX = parseFloat(style.left) || 0;
+        let nodeY = parseFloat(style.top) || 0;
+        
+        // If the node has transform, we need to account for the parent container's transform
+        const parentContainer = node.closest('[style*="transform"]');
+        if (parentContainer) {
+          const parentTransform = parentContainer.style.transform;
+          const translateMatch = parentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+          const scaleMatch = parentTransform.match(/scale\(([^)]+)\)/);
+          
+          if (translateMatch) {
+            const translateX = parseFloat(translateMatch[1]);
+            const translateY = parseFloat(translateMatch[2]);
+            nodeX += translateX;
+            nodeY += translateY;
+          }
+        }
+        
+        const nodeWidth = rect.width;
+        const nodeHeight = rect.height;
+        
+        minX = Math.min(minX, nodeX);
+        maxX = Math.max(maxX, nodeX + nodeWidth);
+        minY = Math.min(minY, nodeY);
+        maxY = Math.max(maxY, nodeY + nodeHeight);
+        
+        nodeData.push({
+          element: node,
+          x: nodeX,
+          y: nodeY,
+          width: nodeWidth,
+          height: nodeHeight
+        });
+      });
+      
+      console.log('Node bounds:', { minX, maxX, minY, maxY });
+      
+      // Add padding
+      const padding = 100;
+      minX -= padding;
+      minY -= padding;
+      maxX += padding;
+      maxY += padding;
+      
+      const mindMapWidth = maxX - minX;
+      const mindMapHeight = maxY - minY;
+      
+      console.log('Mind map dimensions:', { mindMapWidth, mindMapHeight });
+      
+      // Update temp container size
+      tempContainer.style.width = mindMapWidth + 'px';
+      tempContainer.style.height = mindMapHeight + 'px';
+      
+      // Store node information for connection recalculation
+      const nodeInfoMap = new Map();
+      
+      // Clone and position nodes in the temporary container
+      nodeData.forEach(({ element, x, y, width, height }) => {
+        const clonedNode = element.cloneNode(true);
+        
+        // Get the text content to calculate proper dimensions
+        const textContent = element.textContent || element.innerText || '';
+        const nodeLevel = element.getAttribute('data-level') || '0';
+        const level = parseInt(nodeLevel);
+        const nodeId = element.getAttribute('data-node-id');
+        
+        // Calculate proper dimensions based on text content and level
+        let nodeWidth, nodeHeight;
+        if (level === 0) {
+          nodeWidth = Math.max(300, Math.min(400, textContent.length * 12 + 60));
+          nodeHeight = Math.max(100, Math.ceil(textContent.length / 25) * 25 + 60);
+        } else if (level === 1) {
+          nodeWidth = Math.max(250, Math.min(350, textContent.length * 10 + 50));
+          nodeHeight = Math.max(80, Math.ceil(textContent.length / 30) * 22 + 50);
+        } else {
+          nodeWidth = Math.max(220, Math.min(300, textContent.length * 9 + 40));
+          nodeHeight = Math.max(70, Math.ceil(textContent.length / 35) * 20 + 40);
+        }
+        
+        const newX = x - minX;
+        const newY = y - minY;
+        
+        // Store node info for connection calculations
+        nodeInfoMap.set(nodeId, {
+          x: newX,
+          y: newY,
+          width: nodeWidth,
+          height: nodeHeight,
+          centerX: newX + nodeWidth / 2,
+          centerY: newY + nodeHeight / 2,
+          topY: newY,
+          bottomY: newY + nodeHeight,
+          level: level
+        });
+        
+        // Preserve original classes and styling while setting position
+        const originalClasses = element.className;
+        clonedNode.className = originalClasses;
+        
+        // Set position and calculated size
+        clonedNode.style.position = 'absolute';
+        clonedNode.style.left = `${newX}px`;
+        clonedNode.style.top = `${newY}px`;
+        clonedNode.style.width = `${nodeWidth}px`;
+        clonedNode.style.height = `${nodeHeight}px`;
+        clonedNode.style.transform = 'none';
+        clonedNode.style.zIndex = '10';
+        clonedNode.style.overflow = 'visible';
+        clonedNode.style.boxSizing = 'border-box';
+        
+        // Ensure text content maintains proper styling
+        const textDiv = clonedNode.querySelector('.text-center.break-words') || clonedNode.querySelector('div');
+        if (textDiv) {
+          textDiv.style.wordWrap = 'break-word';
+          textDiv.style.overflowWrap = 'break-word';
+          textDiv.style.wordBreak = 'break-word';
+          textDiv.style.whiteSpace = 'normal';
+          textDiv.style.lineHeight = '1.4';
+          textDiv.style.padding = level === 0 ? '12px' : level === 1 ? '10px' : '8px';
+          textDiv.style.boxSizing = 'border-box';
+          textDiv.style.width = '100%';
+          textDiv.style.height = '100%';
+          textDiv.style.display = 'flex';
+          textDiv.style.alignItems = 'center';
+          textDiv.style.justifyContent = 'center';
+          textDiv.style.textAlign = 'center';
+          textDiv.style.fontSize = level === 0 ? '16px' : level === 1 ? '14px' : '12px';
+          textDiv.style.fontWeight = level === 0 ? '700' : level === 1 ? '600' : '500';
+        }
+        
+        // Remove any hover effects or interactive elements
+        const buttons = clonedNode.querySelectorAll('button');
+        buttons.forEach(btn => btn.remove());
+        
+        // Remove opacity transitions that might affect capture
+        const hoverElements = clonedNode.querySelectorAll('.opacity-0, .group-hover\\:opacity-100');
+        hoverElements.forEach(el => {
+          el.style.opacity = '0';
+          el.style.display = 'none';
+        });
+        
+        tempContainer.appendChild(clonedNode);
+      });
+      
+      // Recreate SVG connections based on new node positions and dimensions
+      if (svgElement && nodeInfoMap.size > 0) {
+        // Create a new SVG element with proper L-shaped connections
+        const newSVG = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        newSVG.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 1;
+          pointer-events: none;
+        `;
+        
+        // Set SVG attributes for crisp line rendering
+        newSVG.setAttribute('shape-rendering', 'crispEdges');
+        newSVG.setAttribute('vector-effect', 'non-scaling-stroke');
+        newSVG.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        
+        // Get original connection groups (each connection has 3 lines in L-shape)
+        const originalGroups = svgElement.querySelectorAll('g');
+        
+        // Build parent-child relationships using the actual tree structure
+        const parentChildMap = new Map();
+        
+        // Recursive function to traverse the tree and build relationships
+        const buildRelationships = (node, parentId = null) => {
+          if (parentId) {
+            parentChildMap.set(node.id, { parentId });
+          }
+          
+          if (node.children && node.children.length > 0) {
+            node.children.forEach(child => {
+              buildRelationships(child, node.id);
+            });
+          }
+        };
+        
+        // Start from the root node (taskData[0] contains the full tree structure)
+        if (taskData && taskData.length > 0) {
+          buildRelationships(taskData[0]);
+        }
+        
+        // Create L-shaped connections for each parent-child relationship
+        parentChildMap.forEach((relationship, childId) => {
+          const parentInfo = nodeInfoMap.get(relationship.parentId);
+          const childInfo = nodeInfoMap.get(childId);
+          
+          if (parentInfo && childInfo) {
+            // Ensure precise coordinate alignment by rounding to avoid sub-pixel rendering
+            const fromX = Math.round(parentInfo.centerX);
+            const fromY = Math.round(parentInfo.bottomY);
+            const toX = Math.round(childInfo.centerX);
+            const toY = Math.round(childInfo.topY);
+            const midY = Math.round(fromY + (toY - fromY) / 2);
+            
+            // Create group for this connection
+            const connectionGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            
+            // Vertical line from parent - ensure perfect vertical alignment
+            const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line1.setAttribute('x1', fromX);
+            line1.setAttribute('y1', fromY);
+            line1.setAttribute('x2', fromX); // Same X coordinate for perfect vertical line
+            line1.setAttribute('y2', midY);
+            line1.setAttribute('stroke', '#10B981');
+            line1.setAttribute('stroke-width', '4');
+            line1.setAttribute('stroke-linecap', 'round');
+            line1.setAttribute('shape-rendering', 'crispEdges'); // Ensure crisp rendering
+            
+            // Horizontal line - ensure perfect horizontal alignment
+            const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line2.setAttribute('x1', fromX);
+            line2.setAttribute('y1', midY);
+            line2.setAttribute('x2', toX);
+            line2.setAttribute('y2', midY); // Same Y coordinate for perfect horizontal line
+            line2.setAttribute('stroke', '#10B981');
+            line2.setAttribute('stroke-width', '4');
+            line2.setAttribute('stroke-linecap', 'round');
+            line2.setAttribute('shape-rendering', 'crispEdges'); // Ensure crisp rendering
+            
+            // Vertical line to child - ensure perfect vertical alignment
+            const line3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line3.setAttribute('x1', toX);
+            line3.setAttribute('y1', midY);
+            line3.setAttribute('x2', toX); // Same X coordinate for perfect vertical line
+            line3.setAttribute('y2', toY);
+            line3.setAttribute('stroke', '#10B981');
+            line3.setAttribute('stroke-width', '4');
+            line3.setAttribute('stroke-linecap', 'round');
+            line3.setAttribute('shape-rendering', 'crispEdges'); // Ensure crisp rendering
+            
+            connectionGroup.appendChild(line1);
+            connectionGroup.appendChild(line2);
+            connectionGroup.appendChild(line3);
+            newSVG.appendChild(connectionGroup);
+          }
+        });
+        
+        tempContainer.appendChild(newSVG);
+      }
+      
+      // Wait for the DOM to update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('Capturing flattened mind map...');
+      
+      // Capture the flattened mind map
+      let canvas;
+      try {
+        canvas = await html2canvas(tempContainer, {
+          scale: 1,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: null,
+          logging: false,
+          width: mindMapWidth,
+          height: mindMapHeight
+        });
+      } catch (canvasError) {
+        console.log('First attempt failed, trying simpler approach:', canvasError.message);
+        canvas = await html2canvas(tempContainer, {
+          scale: 0.8,
+          backgroundColor: '#1a2332',
+          logging: false
+        });
+      }
+      
+      console.log('Canvas generated:', { width: canvas.width, height: canvas.height });
+      
+      // Clean up temporary container
+      document.body.removeChild(tempContainer);
+      
+      // Create PDF with appropriate size
+      console.log('Creating PDF document...');
+      const pdf = new jsPDF({
+        orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      console.log('PDF created successfully');
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      // Calculate dimensions to fit the content properly
+      const imgAspectRatio = canvas.width / canvas.height;
+      const pdfAspectRatio = pdfWidth / pdfHeight;
+      
+      let finalWidth, finalHeight;
+      
+      if (imgAspectRatio > pdfAspectRatio) {
+        // Image is wider, fit to width
+        finalWidth = pdfWidth;
+        finalHeight = pdfWidth / imgAspectRatio;
+      } else {
+        // Image is taller, fit to height
+        finalHeight = pdfHeight;
+        finalWidth = pdfHeight * imgAspectRatio;
+      }
+      
+      // Center the image on the page
+      const xOffset = (pdfWidth - finalWidth) / 2;
+      const yOffset = (pdfHeight - finalHeight) / 2;
+      
+      pdf.addImage(imgData, 'PNG', xOffset, yOffset, finalWidth, finalHeight);
+      
+      // Add watermark at bottom right corner
+       const watermarkWidth = 50; // Width of the watermark box in mm
+       const watermarkHeight = 6; // Height of the watermark box in mm
+       const margin = 5; // Margin from edges in mm
+      
+      // Position at bottom right
+      const watermarkX = pdfWidth - watermarkWidth - margin;
+      const watermarkY = pdfHeight - watermarkHeight - margin;
+      
+      // Draw black rounded rectangle background
+      pdf.setFillColor(0, 0, 0); // Black color
+      pdf.roundedRect(watermarkX, watermarkY, watermarkWidth, watermarkHeight, 2, 2, 'F');
+      
+      // Add text with different colors for each part
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'bold');
+      
+      // "Made with " in white
+      const madeWithText = 'Made with ';
+      pdf.setTextColor(255, 255, 255); // White color
+      const madeWithWidth = pdf.getTextWidth(madeWithText);
+      
+      // "Zolopilot AI" in purple (approximating the gradient with a single purple color)
+      const zolopilotText = 'Zolopilot AI';
+      pdf.setTextColor(147, 51, 234); // Purple color (rgb(147, 51, 234) = #9333ea)
+      const zolopilotWidth = pdf.getTextWidth(zolopilotText);
+      
+      // Calculate total text width and center position
+      const totalTextWidth = madeWithWidth + zolopilotWidth;
+      const startX = watermarkX + (watermarkWidth - totalTextWidth) / 2;
+      const textY = watermarkY + watermarkHeight / 2 + 1.5; // Slightly offset for vertical centering
+      
+      // Draw "Made with " in white
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(madeWithText, startX, textY);
+      
+      // Draw "Zolopilot AI" in purple
+      pdf.setTextColor(147, 51, 234);
+      pdf.text(zolopilotText, startX + madeWithWidth, textY);
+      
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const filename = `mindmap-${timestamp}.pdf`;
+      
+      pdf.save(filename);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert(`Failed to generate PDF: ${error.message}. Please try again.`);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
   // Function to clean bracketed content from topic headings
   const cleanTopicHeadings = (jsonString) => {
     // Remove specific bracketed content from topic headings
@@ -656,18 +1221,42 @@ Return ONLY the JSON object, no markdown or additional text.`
 
       const rawMindMapResult = await callLLM(mindMapPrompt, true)
       
-      // Clean the bracketed content from topic headings
+      // SECURITY FIX: Clean and validate JSON with secure parsing
       let mindMapResult = rawMindMapResult
       if (typeof rawMindMapResult === 'string') {
-        // If result is a string, clean it and parse
+        // If result is a string, clean it and parse securely
         const cleanedJsonString = cleanTopicHeadings(rawMindMapResult)
-        mindMapResult = JSON.parse(cleanedJsonString)
+        const parseResult = safeJsonParse(cleanedJsonString)
+        if (!parseResult.success) {
+          throw new Error(`Invalid JSON structure: ${parseResult.errors.join(', ')}`)
+        }
+        mindMapResult = parseResult.data
       } else if (typeof rawMindMapResult === 'object') {
         // If result is already an object, stringify, clean, and parse back
         const jsonString = JSON.stringify(rawMindMapResult)
         const cleanedJsonString = cleanTopicHeadings(jsonString)
-        mindMapResult = JSON.parse(cleanedJsonString)
+        const parseResult = safeJsonParse(cleanedJsonString)
+        if (!parseResult.success) {
+          throw new Error(`Invalid JSON structure: ${parseResult.errors.join(', ')}`)
+        }
+        mindMapResult = parseResult.data
       }
+      
+      // Validate mind map structure
+      const validation = validateMindMapData(mindMapResult)
+      if (!validation.valid) {
+        throw new Error(`Invalid mind map structure: ${validation.errors.join(', ')}`)
+      }
+      
+      // Sanitize text content to prevent XSS
+      const sanitizeNode = (node) => {
+        if (node.text) node.text = sanitizeText(node.text)
+        if (node.children) {
+          node.children.forEach(sanitizeNode)
+        }
+        return node
+      }
+      mindMapResult = sanitizeNode(mindMapResult)
       
       if (mindMapResult && mindMapResult.id) {
         setMindMapData(mindMapResult)
@@ -1015,6 +1604,137 @@ Return ONLY the JSON object, no markdown or additional text.`
     }
   }, [currentText, currentIdeaIndex, isTyping, startupIdea, isTextareaFocused])
 
+  // Share Modal Component
+  const ShareModal = () => {
+    console.log('ShareModal render - showShareModal:', showShareModal, 'shareUrl:', shareUrl);
+    if (!showShareModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-slate-800 rounded-lg p-6 w-96 max-w-[90vw] border border-slate-600">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-white">Share Mind Map</h3>
+            <button
+              onClick={() => setShowShareModal(false)}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="space-y-4">
+            {/* Copy Link Section */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Share Link</label>
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={shareUrl}
+                  readOnly
+                  className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm"
+                />
+                <button
+                  onClick={handleCopyLink}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+            
+            {/* Download PDF Section */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Download as PDF</label>
+              <button
+                onClick={handleDownloadPDF}
+                disabled={isGeneratingPDF}
+                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium flex items-center justify-center space-x-2"
+              >
+                {isGeneratingPDF ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Generating PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Download PDF</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Guest view - only show mind map
+  if (isGuestView && guestMindMapData) {
+    const guestTasks = convertMindMapToTasks(guestMindMapData);
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-black to-black relative overflow-hidden">
+        {/* Background gradients */}
+        <div className="absolute inset-0 bg-gradient-to-br from-black/90 via-purple-950/5 to-black/95"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(15,10,25,0.08),transparent_85%)]"></div>
+        
+        <div className="relative z-10 h-screen flex flex-col">
+          {/* Simple header for guest view */}
+          <header className="w-full px-6 py-4 border-b border-slate-700/50">
+            <div className="flex items-center justify-center">
+              <h2 className="text-xl font-bold text-white">Zolopilot AI - Mind Map</h2>
+            </div>
+          </header>
+          
+          {/* Full screen mind map */}
+           <div className="flex-1 overflow-hidden relative">
+             <div className="w-full h-full bg-slate-900/50 backdrop-blur-sm border border-slate-700/50 rounded-lg overflow-hidden dotted-background">
+               <TreeView
+                 tasks={guestTasks}
+                 onUpdateTask={() => {}}
+                 onDeleteTask={() => {}}
+                 onAddTask={() => {}}
+                 zoomLevel={1}
+                 panPosition={{ x: 0, y: 0 }}
+                 onPanChange={() => {}}
+                 onZoomChange={() => {}}
+               />
+             </div>
+             
+             {/* Watermark */}
+             <div className="absolute bottom-4 right-4 z-50">
+               <a 
+                 href="https://zolopilot-ai.vercel.app/" 
+                 target="_blank" 
+                 rel="noopener noreferrer"
+                 className="inline-block bg-black rounded-md text-xs font-bold shadow-lg border border-gray-600 hover:bg-gray-900 hover:border-gray-500 transition-all duration-200 cursor-pointer"
+                 style={{
+                   fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+                   letterSpacing: '0.025em',
+                   textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                   padding: '3px 1px',
+                   lineHeight: '1',
+                   display: 'inline-block',
+                   whiteSpace: 'nowrap'
+                 }}
+               >
+                 <span className="text-white">Made with </span>
+                 <span className="bg-gradient-to-r from-purple-800 to-purple-900 bg-clip-text text-transparent">Zolopilot AI</span>
+               </a>
+             </div>
+           </div>
+        </div>
+      </div>
+    );
+  }
+
   if (showGenerationView) {
     // Desktop view
     return (
@@ -1025,6 +1745,7 @@ Return ONLY the JSON object, no markdown or additional text.`
           
           <div className="relative z-10 h-screen flex flex-col">
             {/* Header */}
+            {!isMindMapExpanded && (
             <header className="w-full px-6 py-4 border-b border-slate-700/50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
@@ -1066,9 +1787,10 @@ Return ONLY the JSON object, no markdown or additional text.`
                 </div>
               </div>
             </header>
+            )}
 
             {/* Split Screen Content */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className={`${isMindMapExpanded ? 'h-full' : 'flex-1'} flex flex-col overflow-hidden`}>
               {/* Chat Interface Section */}
               <div className={`transition-all duration-500 ease-in-out overflow-hidden ${
                 isChatExpanded && !isMindMapExpanded 
@@ -1092,8 +1814,13 @@ Return ONLY the JSON object, no markdown or additional text.`
                         </div>
                       </div>
                       <button 
-                        onClick={() => setIsChatExpanded(false)}
-                        className="bg-gradient-to-r from-purple-800 to-purple-900 hover:from-purple-700 hover:to-purple-800 text-white p-2 rounded-lg shadow-lg hover:shadow-purple-500/25 transition-all duration-200 backdrop-blur-sm border-2 border-white/20 hover:border-white/40"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('Collapse button clicked');
+                          setIsChatExpanded(false);
+                        }}
+                        className="bg-gradient-to-r from-purple-800 to-purple-900 hover:from-purple-700 hover:to-purple-800 text-white p-2 rounded-lg shadow-lg hover:shadow-purple-500/25 transition-all duration-200 backdrop-blur-sm border-2 border-white/20 hover:border-white/40 cursor-pointer z-10"
                         title="Collapse chat"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1189,34 +1916,72 @@ Return ONLY the JSON object, no markdown or additional text.`
                   {/* Divider */}
                   <div className="w-8 h-px bg-slate-600/50"></div>
                   
-                  {/* Placeholder for Future Options */}
-                  <div className="flex flex-col space-y-3 opacity-50">
-                    {/* Settings Button (Future) */}
-                    <div className="w-12 h-12 bg-slate-700/50 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  {/* Navigation Options */}
+                  <div className="flex flex-col space-y-3">
+                    {/* Generation Button */}
+                    <button
+                      onClick={() => setCurrentPage('generation')}
+                      className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-200 p-2 ${
+                        currentPage === 'generation'
+                          ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+                          : 'bg-slate-700/50 text-gray-400 hover:bg-slate-600/50 hover:text-white'
+                      }`}
+                      title="Mind Map Generation"
+                    >
+                      <svg className="w-7 h-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+                        <path fill="currentColor" d="M62,44h-8V32c0-1.104-0.896-2-2-2H34V20h10c1.104,0,2-0.896,2-2V6c0-1.104-0.896-2-2-2H20c-1.104,0-2,0.896-2,2v12   c0,1.104,0.896,2,2,2h10v10H12c-1.104,0-2,0.896-2,2v12H2c-1.104,0-2,0.896-2,2v12c0,1.104,0.896,2,2,2h24c1.104,0,2-0.896,2-2V46   c0-1.104-0.896-2-2-2H14V34h36v10H38c-1.104,0-2,0.896-2,2v12c0,1.104,0.896,2,2,2h24c1.104,0,2-0.896,2-2V46   C64,44.896,63.104,44,62,44z M22,8h20v8H22V8z M24,56H4v-8h20V56z M60,56H40v-8h20V56z"/>
                       </svg>
-                    </div>
+                    </button>
                     
-                    {/* Help Button (Future) */}
-                    <div className="w-12 h-12 bg-slate-700/50 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
+                    {/* Share Button */}
+                    {mindMapData && (
+                      <button
+                        onClick={handleShareClick}
+                        className="w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-200 p-2 bg-slate-700/50 text-gray-400 hover:bg-slate-600/50 hover:text-white"
+                        title="Share Mind Map"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   
                   {/* Spacer */}
                   <div className="flex-1"></div>
                   
-                  {/* Bottom Options (Future) */}
-                  <div className="opacity-50">
-                    <div className="w-12 h-12 bg-slate-700/50 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {/* Profile and Settings Buttons */}
+                  <div className="flex flex-col space-y-3">
+                    {/* Profile Button */}
+                    <button
+                      onClick={() => setCurrentPage('profile')}
+                      className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                        currentPage === 'profile'
+                          ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+                          : 'bg-slate-700/50 text-gray-400 hover:bg-slate-600/50 hover:text-white'
+                      }`}
+                      title="Profile"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
-                    </div>
+                    </button>
+                    
+                    {/* Settings Button */}
+                    <button
+                      onClick={() => setCurrentPage('settings')}
+                      className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                        currentPage === 'settings'
+                          ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+                          : 'bg-slate-700/50 text-gray-400 hover:bg-slate-600/50 hover:text-white'
+                      }`}
+                      title="Settings"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </button>
                   </div>
                   </div>
                 )}
@@ -1240,16 +2005,17 @@ Return ONLY the JSON object, no markdown or additional text.`
                       )}
                       <button
                         onClick={() => setIsMindMapExpanded(!isMindMapExpanded)}
-                        className="p-3 sm:p-2 text-white hover:text-purple-300 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all duration-200 touch-target"
+                        className="p-3 sm:p-2 text-white hover:text-purple-300 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all duration-200 touch-target flex items-center justify-center"
                         title={isMindMapExpanded ? 'Exit full screen' : 'Expand to full screen'}
                       >
                         <svg 
-                          className={`w-5 h-5 transform transition-transform duration-200 ${isMindMapExpanded ? 'rotate-180' : ''}`} 
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
+                          className="w-8 h-8" 
+                          viewBox="0 0 16 16" 
+                          fill="currentColor"
                         >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          <path d="m11 8 1 0 0 -4 -4 0 0 1 3 0 0 3z" />
+                          <path d="m4 12 4 0 0 -1 -3 0 0 -3 -1 0 0 4z" />
+                          <path d="M13 14H3a1.00115 1.00115 0 0 1 -1 -1V3a1.00115 1.00115 0 0 1 1 -1h10a1.00115 1.00115 0 0 1 1 1v10a1.00115 1.00115 0 0 1 -1 1ZM3 3v10h10.0006L13 3Z" />
                         </svg>
                       </button>
                     </div>
@@ -1257,8 +2023,16 @@ Return ONLY the JSON object, no markdown or additional text.`
                 </div>
 
                 {/* Mind Map Content */}
-                <div className="flex-1 overflow-hidden p-4">
-                  {mindMapData ? (
+                <div className="flex-1 overflow-hidden">
+                  {currentPage === 'profile' ? (
+                    <div className="h-full w-full">
+                      <ProfilePage user={user} onBack={() => setCurrentPage('generation')} />
+                    </div>
+                  ) : currentPage === 'settings' ? (
+                    <div className="h-full w-full">
+                      <SettingsPage user={user} onBack={() => setCurrentPage('generation')} />
+                    </div>
+                  ) : mindMapData ? (
                     <div className="h-full border border-gray-800/70 rounded-xl overflow-hidden relative">
                       {/* View Switcher - Top Left */}
                       <div className="absolute top-4 left-4 z-10">
@@ -1438,6 +2212,67 @@ Return ONLY the JSON object, no markdown or additional text.`
               </div>
             )}
           </div>
+
+          {/* Share Modal - Only in generation view */}
+          {showShareModal && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-slate-800 rounded-xl border border-slate-600 p-6 w-full max-w-md relative">
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                
+                <h3 className="text-xl font-bold text-white mb-4">Share Mind Map</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Share Link</label>
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        value={shareUrl}
+                        readOnly
+                        className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm"
+                      />
+                      <button
+                        onClick={handleCopyLink}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Download as PDF</label>
+                    <button
+                      onClick={handleDownloadPDF}
+                      disabled={isGeneratingPDF}
+                      className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
+                    >
+                      {isGeneratingPDF ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Generating PDF...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>Download PDF</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )
     }
@@ -1451,93 +2286,89 @@ Return ONLY the JSON object, no markdown or additional text.`
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Desktop Header */}
         <header className="hidden md:block w-full px-6 py-4">
-          <div className="max-w-7xl mx-auto grid grid-cols-3 items-center">
-            {/* Left - Zolopilot Logo */}
-            <div className="flex justify-start">
-              <h2 className="text-2xl font-bold text-white tracking-wide">Zolopilot AI</h2>
+          <div className="w-full flex items-center justify-between">
+            {/* Left Corner - Zolopilot Logo */}
+            <div className="flex-shrink-0">
+              <h2 className="text-4xl font-bold text-white tracking-wide">Zolopilot AI</h2>
             </div>
             
             {/* Center - Navigation Menu */}
-            <nav className="flex items-center justify-center space-x-8">
-              <a href="#community" className="text-white hover:text-gray-300 transition-colors">
-                Community
-              </a>
-              <a href="#trending-ideas" className="text-white hover:text-gray-300 transition-colors">
+            <nav className="flex items-center justify-center space-x-16">
+              <button 
+                onClick={() => setCurrentPage('generation')}
+                className={`text-2xl font-bold transition-colors ${
+                  currentPage === 'generation' 
+                    ? 'text-purple-300' 
+                    : 'text-white hover:text-gray-300'
+                }`}
+              >
+                Home
+              </button>
+              <button 
+                onClick={() => setCurrentPage('trending')}
+                className={`text-2xl font-bold transition-colors ${
+                  currentPage === 'trending' 
+                    ? 'text-purple-300' 
+                    : 'text-white hover:text-gray-300'
+                }`}
+              >
                 Trending Ideas
-              </a>
-              <a href="#pricing" className="text-white hover:text-gray-300 transition-colors">
+              </button>
+              <button 
+                onClick={() => setCurrentPage('pricing')}
+                className={`text-2xl font-bold transition-colors ${
+                  currentPage === 'pricing' 
+                    ? 'text-purple-300' 
+                    : 'text-white hover:text-gray-300'
+                }`}
+              >
                 Pricing
-              </a>
+              </button>
+              <span className="text-2xl font-bold text-gray-400 cursor-not-allowed">
+                Community (Launching Soon)
+              </span>
             </nav>
             
-            {/* Right - Social Icons and Buttons */}
-            <div className="flex items-center justify-end space-x-4">
-              {/* Social Icons */}
-              <div className="hidden lg:flex items-center space-x-3">
-                <a href="#discord" className="text-white hover:text-gray-300 transition-colors">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
-                  </svg>
-                </a>
-                <a href="#linkedin" className="text-white hover:text-gray-300 transition-colors">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                  </svg>
-                </a>
-                <a href="#twitter" className="text-white hover:text-gray-300 transition-colors">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
-                  </svg>
-                </a>
-                <a href="#reddit" className="text-white hover:text-gray-300 transition-colors">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
-                  </svg>
-                </a>
-              </div>
-              
-              {/* Auth Buttons */}
-              <div className="flex items-center space-x-3">
-                {isAuthenticated ? (
-                  <>
-                    <span className="text-white font-medium">
-                      Welcome, {user?.displayName || user?.email || 'User'}
-                    </span>
-                    <button 
-                      onClick={handleSignOut}
-                      className="text-white hover:text-purple-300 transition-colors font-medium px-4 py-2 rounded-lg hover:bg-white/5 backdrop-blur-sm"
-                    >
-                      Sign Out
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button 
-                      onClick={() => setShowAuthModal(true)}
-                      className="text-white hover:text-purple-300 transition-colors font-medium px-4 py-2 rounded-lg hover:bg-white/5 backdrop-blur-sm"
-                    >
-                      Sign In
-                    </button>
-                    <button 
-                      onClick={() => setShowAuthModal(true)}
-                      className="bg-gradient-to-r from-purple-800 to-purple-900 hover:from-purple-700 hover:to-purple-800 text-white px-6 py-2 rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-purple-500/25 backdrop-blur-sm"
-                    >
-                      Get Started
-                    </button>
-                  </>
-                )}
-              </div>
+            {/* Right Corner - Auth Buttons */}
+            <div className="flex items-center space-x-3 flex-shrink-0">
+              {isAuthenticated ? (
+                <>
+                  <span className="text-white font-bold text-xl">
+                    Welcome, {user?.displayName || user?.email || 'User'}
+                  </span>
+                  <button 
+                    onClick={handleSignOut}
+                    className="text-white hover:text-purple-300 transition-colors font-bold px-4 py-2 rounded-lg hover:bg-white/5 backdrop-blur-sm text-xl"
+                  >
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => setShowAuthModal(true)}
+                    className="text-white hover:text-purple-300 transition-colors font-bold px-4 py-2 rounded-lg hover:bg-white/5 backdrop-blur-sm text-xl"
+                  >
+                    Sign In
+                  </button>
+                  <button 
+                    onClick={() => setShowAuthModal(true)}
+                    className="bg-gradient-to-r from-purple-800 to-purple-900 hover:from-purple-700 hover:to-purple-800 text-white px-6 py-2 rounded-lg transition-all duration-200 font-bold shadow-lg hover:shadow-purple-500/25 backdrop-blur-sm text-xl"
+                  >
+                    Get Started
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </header>
-        )}
 
         {/* Mobile Header */}
         {!isMindMapExpanded && !isChatSectionExpanded && (
-        <header className="md:hidden w-full px-4" style={{paddingTop: '6px', paddingBottom: '6px'}}>
+        <header className="md:hidden w-full px-4">
           <div className="flex items-center justify-between">
             {/* Logo */}
-            <h2 className="text-2xl font-bold text-white tracking-wide">Zolopilot AI</h2>
+            <h2 className="text-4xl font-bold text-white tracking-wide">Zolopilot AI</h2>
             
             {/* Menu Toggle Button */}
             <button 
@@ -1561,35 +2392,55 @@ Return ONLY the JSON object, no markdown or additional text.`
         {!isMindMapExpanded && !isChatSectionExpanded && isMobileMenuOpen && (
           <div className="md:hidden bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50">
             <div className="px-4 py-4 space-y-4">
-              {/* Social Icons */}
-              <div className="flex items-center justify-center space-x-6 pb-4 border-b border-slate-700/50">
-                <a href="#discord" className="text-white hover:text-purple-300 transition-colors">
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
-                  </svg>
-                </a>
-                <a href="#linkedin" className="text-white hover:text-purple-300 transition-colors">
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                  </svg>
-                </a>
-                <a href="#twitter" className="text-white hover:text-purple-300 transition-colors">
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
-                  </svg>
-                </a>
-                <a href="#reddit" className="text-white hover:text-purple-300 transition-colors">
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
-                  </svg>
-                </a>
+              
+              {/* Navigation Menu */}
+              <div className="space-y-3 pb-4 border-b border-slate-700/50">
+                <button 
+                  onClick={() => {
+                    setCurrentPage('generation')
+                    setIsMobileMenuOpen(false)
+                  }}
+                  className={`w-full text-left px-4 py-3 rounded-lg transition-colors font-bold text-xl ${
+                    currentPage === 'generation' 
+                      ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50' 
+                      : 'text-white hover:text-purple-300 hover:bg-white/5 border border-slate-600/50'
+                  }`}
+                >
+                  Home
+                </button>
+                <button 
+                  onClick={() => {
+                    setCurrentPage('trending')
+                    setIsMobileMenuOpen(false)
+                  }}
+                  className={`w-full text-left px-4 py-3 rounded-lg transition-colors font-bold text-xl ${
+                    currentPage === 'trending' 
+                      ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50' 
+                      : 'text-white hover:text-purple-300 hover:bg-white/5 border border-slate-600/50'
+                  }`}
+                >
+                  Trending Ideas
+                </button>
+                <button 
+                  onClick={() => {
+                    setCurrentPage('pricing')
+                    setIsMobileMenuOpen(false)
+                  }}
+                  className={`w-full text-left px-4 py-3 rounded-lg transition-colors font-bold text-xl ${
+                    currentPage === 'pricing' 
+                      ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50' 
+                      : 'text-white hover:text-purple-300 hover:bg-white/5 border border-slate-600/50'
+                  }`}
+                >
+                  Pricing
+                </button>
               </div>
               
               {/* Auth Buttons */}
               <div className="space-y-3">
                 {isAuthenticated ? (
                   <>
-                    <div className="text-center text-white font-medium py-2">
+                    <div className="text-center text-white font-bold py-2 text-xl">
                       Welcome, {user?.displayName || user?.email || 'User'}
                     </div>
                     <button 
@@ -1597,7 +2448,7 @@ Return ONLY the JSON object, no markdown or additional text.`
                         handleSignOut()
                         setIsMobileMenuOpen(false)
                       }}
-                      className="w-full text-white hover:text-purple-300 transition-colors font-medium px-4 py-3 rounded-lg hover:bg-white/5 backdrop-blur-sm border border-slate-600/50"
+                      className="w-full text-white hover:text-purple-300 transition-colors font-bold px-4 py-3 rounded-lg hover:bg-white/5 backdrop-blur-sm border border-slate-600/50 text-xl"
                     >
                       Sign Out
                     </button>
@@ -1609,7 +2460,7 @@ Return ONLY the JSON object, no markdown or additional text.`
                         setShowAuthModal(true)
                         setIsMobileMenuOpen(false)
                       }}
-                      className="w-full text-white hover:text-purple-300 transition-colors font-medium px-4 py-3 rounded-lg hover:bg-white/5 backdrop-blur-sm border border-slate-600/50"
+                      className="w-full text-white hover:text-purple-300 transition-colors font-bold px-4 py-3 rounded-lg hover:bg-white/5 backdrop-blur-sm border border-slate-600/50 text-xl"
                     >
                       Sign In
                     </button>
@@ -1618,7 +2469,7 @@ Return ONLY the JSON object, no markdown or additional text.`
                         setShowAuthModal(true)
                         setIsMobileMenuOpen(false)
                       }}
-                      className="w-full bg-gradient-to-r from-purple-800 to-purple-900 hover:from-purple-700 hover:to-purple-800 text-white px-6 py-3 rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-purple-500/25 backdrop-blur-sm"
+                      className="w-full bg-gradient-to-r from-purple-800 to-purple-900 hover:from-purple-700 hover:to-purple-800 text-white px-6 py-3 rounded-lg transition-all duration-200 font-bold shadow-lg hover:shadow-purple-500/25 backdrop-blur-sm text-xl"
                     >
                       Get Started
                     </button>
@@ -1629,7 +2480,25 @@ Return ONLY the JSON object, no markdown or additional text.`
           </div>
         )}
         
-        <div className="flex-1 flex flex-col justify-center px-3 sm:px-4 md:px-6 py-8 sm:py-12">
+        {/* Page Content */}
+        {currentPage === 'trending' && (
+          <TrendingIdeas 
+            onBack={() => setCurrentPage('generation')}
+            onSelectIdea={(idea) => {
+              setStartupIdea(idea.description)
+              setCurrentPage('generation')
+            }}
+          />
+        )}
+        
+        {currentPage === 'pricing' && (
+          <PricingPage 
+            onBack={() => setCurrentPage('generation')}
+          />
+        )}
+        
+        {currentPage === 'generation' && (
+        <div className="flex-1 flex flex-col justify-center px-3 sm:px-4 md:px-6 pt-32 pb-8 sm:pt-48 sm:pb-12">
           <div className="max-w-4xl mx-auto w-full">
             {/* Header */}
             {!isChatSectionExpanded && (
@@ -1648,7 +2517,7 @@ Return ONLY the JSON object, no markdown or additional text.`
               {/* Section Header */}
               <div className="flex items-center justify-between mb-4 sm:mb-6">
                 <h2 className={`text-xl sm:text-2xl font-bold text-white ${isChatSectionExpanded ? 'text-3xl' : ''}`}>
-                  {isChatSectionExpanded ? 'AI Enhanced Prompt - Full View' : 'AI Enhanced Prompt'}
+                  {isChatSectionExpanded ? 'Type Your Billion Dollar Idea Here - Full View' : 'Type Your Billion Dollar Idea Here'}
                 </h2>
                 <button
                   onClick={() => setIsChatSectionExpanded(!isChatSectionExpanded)}
@@ -1676,10 +2545,32 @@ Return ONLY the JSON object, no markdown or additional text.`
                 handleAuthRequired()
                 return
               }
-              setStartupIdea(e.target.value)
+              
+              // SECURITY FIX: Validate and sanitize input
+              const rawValue = e.target.value;
+              
+              // Check length limits
+              if (rawValue.length > INPUT_VALIDATION.startupIdea.maxLength) {
+                setError(`Input too long. Maximum ${INPUT_VALIDATION.startupIdea.maxLength} characters allowed.`);
+                return;
+              }
+              
+              // Basic pattern validation (allow alphanumeric, spaces, and common punctuation)
+              if (rawValue && !INPUT_VALIDATION.startupIdea.pattern.test(rawValue)) {
+                setError('Invalid characters detected. Please use only letters, numbers, spaces, and basic punctuation.');
+                return;
+              }
+              
+              // Clear any previous errors
+              setError('');
+              
+              // Sanitize the input
+              const sanitizedValue = sanitizeText(rawValue);
+              setStartupIdea(sanitizedValue);
+              
               // Analyze input quality in real-time
-              if (e.target.value.trim()) {
-                const quality = analyzeInputQuality(e.target.value)
+              if (sanitizedValue.trim()) {
+                const quality = analyzeInputQuality(sanitizedValue)
                 setInputQuality(quality)
               } else {
                 setInputQuality(null)
@@ -1892,7 +2783,7 @@ Return ONLY the JSON object, no markdown or additional text.`
           </div>
         )}
         
-        {/* AI Enhanced Prompt Chatbox - Moved to generation view */}
+        {/* Type Your Billion Dollar Idea Here Chatbox - Moved to generation view */}
         
 
         
@@ -1905,6 +2796,7 @@ Return ONLY the JSON object, no markdown or additional text.`
         {/* Mind Map display removed from front page - only shown in generation view */}
           </div>
         </div>
+        )}
       </div>
       
       {/* Authentication Modal */}
@@ -1915,6 +2807,8 @@ Return ONLY the JSON object, no markdown or additional text.`
           onAuthSuccess={handleAuthSuccess}
         />
       )}
+      
+
     </div>
   )
 }
