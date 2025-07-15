@@ -116,7 +116,7 @@ const MobileGenerationView = ({
               <span className="font-medium">New Idea</span>
             </button>
             
-            <h2 className="text-lg font-bold text-white tracking-wide">Zolopilot AI</h2>
+            <h2 className="text-xl font-bold text-white tracking-wide">Zolopilot AI</h2>
             
             <div className="flex items-center space-x-2">
               {loading && <LoadingSpinner size="sm" />}
@@ -333,7 +333,7 @@ const MobileGenerationView = ({
             <div className="flex items-center justify-between p-4 border-b border-slate-700/50">
               <div className="flex items-center space-x-3">
                 <h3 className="text-white font-medium text-lg">
-                  AI Enhanced Prompt
+                  Type Your Billion Dollar Idea Here
                 </h3>
                 {isEnhancing && (
                   <div className="flex items-center space-x-2 text-white">

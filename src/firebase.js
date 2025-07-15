@@ -4,15 +4,21 @@ import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, quer
 // MongoDB integration removed - using Firebase only
 
 // Firebase configuration - Connected to zolopilot-ai project
+// SECURITY FIX: Using environment variables instead of hardcoded values
 const firebaseConfig = {
-  apiKey: "AIzaSyAHV-p-Lh_SFiEq-21wlYRpbX_IcT-n9l8",
-  authDomain: "zolopilot-ai.firebaseapp.com",
-  projectId: "zolopilot-ai",
-  storageBucket: "zolopilot-ai.firebasestorage.app",
-  messagingSenderId: "969187944606",
-  appId: "1:969187944606:web:31a99228b53ce44773738f",
-  measurementId: "G-KXQ777ZL66"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
+
+// Validate Firebase configuration
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error('Firebase configuration is incomplete. Please check your environment variables.');
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

@@ -76,10 +76,58 @@ npm install
 npm run dev
 ```
 
+## 🔒 Security Features
+
+### Security Improvements
+- **Environment Variables**: API keys moved from hardcoded values to environment variables
+- **Input Validation**: Comprehensive validation and sanitization of user inputs
+- **JSON Schema Validation**: Secure parsing of LLM responses with structure validation
+- **XSS Protection**: Content sanitization to prevent cross-site scripting
+- **Security Headers**: CSP, X-Frame-Options, and other protective headers
+- **Dependency Scanning**: Automated security audits with npm audit
+
+### Security Headers
+The application includes the following security headers:
+- `Content-Security-Policy`: Restricts resource loading to trusted sources
+- `X-Frame-Options`: Prevents clickjacking attacks
+- `X-Content-Type-Options`: Prevents MIME type sniffing
+- `Referrer-Policy`: Controls referrer information
+- `Permissions-Policy`: Restricts access to browser features
+
+### Secure Deployment
+For production deployment:
+1. Use environment variables for all sensitive data
+2. Enable HTTPS/SSL certificates
+3. Configure proper CORS policies
+4. Run security audits regularly: `npm run security:audit`
+5. Keep dependencies updated: `npm run security:fix`
+
 ## Configuration
 
+### Environment Variables Setup
+Create a `.env` file in the root directory:
+
+```env
+# Firebase Configuration
+VITE_FIREBASE_API_KEY=your-firebase-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+VITE_FIREBASE_APP_ID=your-app-id
+
+# LLM API Keys (at least one required)
+VITE_GEMINI_API_KEY=your-gemini-api-key
+VITE_OPENAI_API_KEY=your-openai-api-key
+VITE_ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# Security Configuration
+VITE_ENVIRONMENT=production
+VITE_CSP_ENABLED=true
+```
+
 ### Firebase Setup
-Replace the placeholder values in `src/firebase.js`:
+**Note**: Firebase configuration is now handled via environment variables for security.
 
 ```javascript
 const firebaseConfig = {
@@ -176,9 +224,12 @@ startup-mindmap-generator/
 
 ### Available Scripts
 - `npm run dev` - Start development server
-- `npm run build` - Build for production
+- `npm run build` - Build for production (includes security check)
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
+- `npm run security:audit` - Run security audit
+- `npm run security:fix` - Fix security vulnerabilities
+- `npm run security:check` - Check for moderate+ security issues
 
 ### Adding New LLM Providers
 1. Add configuration to the `configs` object in `callLLM` function

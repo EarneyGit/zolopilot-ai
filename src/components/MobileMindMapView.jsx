@@ -64,9 +64,9 @@ const MobileMindMapView = ({
       
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Mobile Header */}
-        <header className="w-full px-4 py-4">
+        <header className="w-full px-4">
           <div className="flex items-center justify-center">
-            <h2 className="text-2xl font-bold text-white tracking-wide">Zolopilot AI</h2>
+            <h2 className="text-3xl font-bold text-white tracking-wide">Zolopilot AI</h2>
           </div>
         </header>
 
@@ -98,7 +98,7 @@ const MobileMindMapView = ({
               {mindMapData ? (
                 <div className="h-full border border-gray-800/70 rounded-xl overflow-hidden relative">
                   {/* View Switcher - Top Left */}
-                  <div className="absolute top-4 left-4 z-10">
+                  <div className="absolute top-4 left-4 right-32 sm:right-auto z-10">
                     <div className="flex items-center space-x-2 bg-slate-800/90 backdrop-blur-sm rounded-lg p-2 border border-slate-600/50">
                       <button
                         onClick={() => setViewMode('flowchart')}

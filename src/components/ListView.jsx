@@ -15,6 +15,7 @@ const ListView = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedTasks, setExpandedTasks] = useState(new Set());
   const [selectedTasks, setSelectedTasks] = useState(new Set());
+  const [isOptionsExpanded, setIsOptionsExpanded] = useState(false);
 
   // Calculate task status
   const getTaskStatus = (task) => {
@@ -186,12 +187,29 @@ const ListView = ({
     <div className="list-view h-full flex flex-col">
       {/* Header Controls */}
       <div className="flex-shrink-0 p-6 border-b border-slate-600/50">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 mt-4 sm:mt-0">
-          <h3 className="text-xl font-bold text-white">Task List</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 mt-16 sm:mt-0">
+          <div></div>
+          
+          {/* Edit Button - Top Right Corner */}
+          <button
+            onClick={() => setIsOptionsExpanded(!isOptionsExpanded)}
+            className="bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600/50 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium shadow-sm text-sm flex items-center gap-2 mt-2 sm:mt-0"
+          >
+            Edit
+            <svg 
+              className={`w-4 h-4 transition-transform duration-200 ${isOptionsExpanded ? 'rotate-180' : ''}`} 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
         
-        {/* Search and Filters */}
-        <div className="space-y-5 mb-6 mt-8 sm:mt-12 px-2">
+        {/* Search and Filters - Collapsible */}
+        {isOptionsExpanded && (
+          <div className="space-y-5 mb-6 mt-4 sm:mt-6 px-2 animate-in slide-in-from-top-2 duration-200">
           {/* Search Bar - Full Width */}
           <div className="w-full">
             <input
@@ -258,20 +276,10 @@ const ListView = ({
               </div>
             </div>
             
-            {/* Sort Order */}
-            <div className="flex-shrink-0">
-              <button
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="px-4 py-3 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white hover:bg-slate-700/50 transition-colors text-sm w-12 h-12 flex items-center justify-center shadow-sm"
-                title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={sortOrder === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
-                </svg>
-              </button>
-            </div>
+
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Task List */}

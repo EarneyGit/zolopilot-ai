@@ -116,6 +116,7 @@ const TreeNode = ({ node, onUpdate, isRoot = false, level = 0, position = { x: 0
       <div
         ref={nodeRef}
         data-node-id={node.id}
+        data-level={level}
         className={getNodeStyle()}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -732,6 +733,7 @@ const TreeView = ({
             height: '100%'
           }}
           preserveAspectRatio="none"
+          shapeRendering="crispEdges"
         >
           {connections.map(connection => {
             // Skip invalid connections
@@ -743,42 +745,49 @@ const TreeView = ({
               return null;
             }
             
-            // Use L-shaped connection lines for all levels
-            const midY = from.y + (to.y - from.y) / 2;
+            // Use L-shaped connection lines for all levels with precise alignment
+            const fromX = Math.round(from.x);
+            const fromY = Math.round(from.y);
+            const toX = Math.round(to.x);
+            const toY = Math.round(to.y);
+            const midY = Math.round(fromY + (toY - fromY) / 2);
             
             return (
               <g key={connection.id}>
                 {/* Vertical line from parent */}
                 <line
-                  x1={from.x}
-                  y1={from.y}
-                  x2={from.x}
+                  x1={fromX}
+                  y1={fromY}
+                  x2={fromX}
                   y2={midY}
                   stroke="#10B981"
                   strokeWidth="4"
                   strokeLinecap="round"
+                  shapeRendering="crispEdges"
                   style={{ vectorEffect: 'non-scaling-stroke' }}
                 />
                 {/* Horizontal line */}
                 <line
-                  x1={from.x}
+                  x1={fromX}
                   y1={midY}
-                  x2={to.x}
+                  x2={toX}
                   y2={midY}
                   stroke="#10B981"
                   strokeWidth="4"
                   strokeLinecap="round"
+                  shapeRendering="crispEdges"
                   style={{ vectorEffect: 'non-scaling-stroke' }}
                 />
                 {/* Vertical line to child */}
                 <line
-                  x1={to.x}
+                  x1={toX}
                   y1={midY}
-                  x2={to.x}
-                  y2={to.y}
+                  x2={toX}
+                  y2={toY}
                   stroke="#10B981"
                   strokeWidth="4"
                   strokeLinecap="round"
+                  shapeRendering="crispEdges"
                   style={{ vectorEffect: 'non-scaling-stroke' }}
                 />
               </g>
