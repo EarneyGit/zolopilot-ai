@@ -2285,10 +2285,10 @@ Return ONLY the JSON object, no markdown or additional text.`
       
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Desktop Header */}
-        <header className="hidden md:block w-full px-6 py-4">
+        <header className="hidden md:block w-full px-6 py-8">
           <div className="w-full flex items-center justify-between">
             {/* Left Corner - Zolopilot Logo */}
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 ml-4">
               <h2 className="text-4xl font-bold text-white tracking-wide">Zolopilot AI</h2>
             </div>
             
@@ -2365,10 +2365,10 @@ Return ONLY the JSON object, no markdown or additional text.`
 
         {/* Mobile Header */}
         {!isMindMapExpanded && !isChatSectionExpanded && (
-        <header className="md:hidden w-full px-4">
+        <header className="md:hidden w-full px-4 py-6">
           <div className="flex items-center justify-between">
             {/* Logo */}
-            <h2 className="text-4xl font-bold text-white tracking-wide">Zolopilot AI</h2>
+            <h2 className="text-2xl font-bold text-white tracking-wide ml-2">Zolopilot AI</h2>
             
             {/* Menu Toggle Button */}
             <button 
@@ -2498,7 +2498,7 @@ Return ONLY the JSON object, no markdown or additional text.`
         )}
         
         {currentPage === 'generation' && (
-        <div className="flex-1 flex flex-col justify-center px-3 sm:px-4 md:px-6 pt-32 pb-8 sm:pt-48 sm:pb-12">
+        <div className="flex-1 flex flex-col justify-center px-3 sm:px-4 md:px-6 pt-8 pb-8 sm:pt-24 sm:pb-12">
           <div className="max-w-4xl mx-auto w-full">
             {/* Header */}
             {!isChatSectionExpanded && (
