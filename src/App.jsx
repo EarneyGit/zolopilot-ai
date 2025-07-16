@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { auth, signInAnonymous, onAuthStateChanged, saveMindMap, loadMindMap, signUpWithEmail, signInWithEmail, signInWithGoogle, logOut, saveMindMapToGallery, loadUserMindMaps, subscribeToUserMindMaps, deleteMindMap, handleGoogleRedirectResult } from './firebase'
+import { auth, signInAnonymous, onAuthStateChanged, saveMindMap, loadMindMap, signUpWithEmail, signInWithEmail, signInWithGoogle, logOut, saveMindMapToGallery, loadUserMindMaps, subscribeToUserMindMaps, deleteMindMap } from './firebase'
 import MindMapNode from './components/MindMapNode'
 import LoadingSpinner from './components/LoadingSpinner'
 import TreeView from './components/TreeView'
@@ -171,24 +171,8 @@ function App() {
     localStorage.setItem('zolopilot_savedMindMaps', JSON.stringify(savedMindMaps || []))
   }, [savedMindMaps])
 
-  // Handle Google redirect result on app load
-  useEffect(() => {
-    const handleRedirectResult = async () => {
-      try {
-        const result = await handleGoogleRedirectResult();
-        if (result.success && result.user) {
-          console.log('✅ Google authentication successful via redirect:', result.user.email);
-          setUser(result.user);
-          setIsAuthenticated(true);
-          setMessage('Successfully signed in with Google!');
-        }
-      } catch (error) {
-        console.error('❌ Error handling Google redirect result:', error);
-      }
-    };
-    
-    handleRedirectResult();
-  }, []);
+  // Note: Google authentication now uses popup method for universal compatibility
+  // No redirect result handling needed
 
   // Firebase authentication
   useEffect(() => {

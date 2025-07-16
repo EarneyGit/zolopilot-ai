@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, orderBy, limit, getDocs, deleteDoc } from 'firebase/firestore';
 // MongoDB integration removed - using Firebase only
 
@@ -64,22 +64,12 @@ export const signInWithGoogle = async (useRedirect = false) => {
     provider.addScope('email');
     provider.addScope('profile');
     
-    // For localhost development, prefer popup method to avoid redirect issues
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const shouldUsePopup = isLocalhost || !useRedirect;
-    
-    if (shouldUsePopup) {
-      // Use popup method for localhost and when explicitly requested
-      console.log('🪟 Using popup method for Google sign-in');
-      const userCredential = await signInWithPopup(auth, provider);
-      console.log('✅ Google sign-in successful:', userCredential.user.email);
-      return { success: true, user: userCredential.user };
-    } else {
-      // Use redirect method for production domains
-      console.log('🔄 Using redirect method for Google sign-in');
-      await signInWithRedirect(auth, provider);
-      return { success: true, redirecting: true };
-    }
+    // Always use popup method for better compatibility across all environments
+    // This avoids domain authorization issues with redirect method on Vercel
+    console.log('🪟 Using popup method for Google sign-in (universal compatibility)');
+    const userCredential = await signInWithPopup(auth, provider);
+    console.log('✅ Google sign-in successful:', userCredential.user.email);
+    return { success: true, user: userCredential.user };
   } catch (error) {
     console.error('❌ Google sign-in error:', error);
     console.error('Error details:', {
@@ -87,26 +77,21 @@ export const signInWithGoogle = async (useRedirect = false) => {
       message: error.message,
       customData: error.customData
     });
+    
+    // If popup is blocked, provide helpful error message
+    if (error.code === 'auth/popup-blocked') {
+      return { 
+        success: false, 
+        error: 'Popup was blocked by browser. Please allow popups for this site and try again.', 
+        errorCode: error.code 
+      };
+    }
+    
     return { success: false, error: error.message, errorCode: error.code };
   }
 };
 
-// Handle redirect result after user returns from Google auth
-export const handleGoogleRedirectResult = async () => {
-  try {
-    console.log('🔍 Checking for Google redirect result...');
-    const result = await getRedirectResult(auth);
-    if (result) {
-      console.log('✅ Google redirect result found:', result.user.email);
-      return { success: true, user: result.user };
-    }
-    console.log('ℹ️ No Google redirect result found');
-    return { success: true, user: null }; // No redirect result
-  } catch (error) {
-    console.error('❌ Error handling Google redirect result:', error);
-    return { success: false, error: error.message };
-  }
-};
+// Google redirect authentication removed - using popup method for universal compatibility
 
 export const logOut = () => signOut(auth);
 
