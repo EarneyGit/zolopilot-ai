@@ -199,7 +199,7 @@ const SettingsPage = ({ user, onBack }) => {
                   value={settings.defaultViewMode}
                   onChange={(value) => handleSettingChange('defaultViewMode', value)}
                   options={[
-                    { value: 'flowchart', label: 'Flowchart' },
+                    { value: 'flowchart', label: 'Mindmap' },
                     { value: 'list', label: 'List View' }
                   ]}
                 />

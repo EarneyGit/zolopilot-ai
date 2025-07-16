@@ -108,7 +108,7 @@ const MobileMindMapView = ({
                             : 'text-gray-300 hover:text-white hover:bg-slate-700/50'
                         }`}
                       >
-                        Flowchart
+                        Mindmap
                       </button>
                       <button
                         onClick={() => setViewMode('list')}
@@ -125,7 +125,7 @@ const MobileMindMapView = ({
 
 
 
-                  {/* Zoom Controls - Top Right (Flowchart only) */}
+                  {/* Zoom Controls - Top Right (Mindmap only) */}
                   {viewMode === 'flowchart' && (
                     <>
                       <div className="absolute top-4 right-4 z-10">

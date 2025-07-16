@@ -228,7 +228,7 @@ const MobileGenerationView = ({
                         </div>
                       </div>
 
-                      {/* Fit to Frame Button - Top Right (Flowchart only) */}
+                      {/* Fit to Frame Button - Top Right (Mindmap only) */}
                       {viewMode === 'flowchart' && (
                         <div className="absolute top-2 right-2 z-10">
                           <button
@@ -243,7 +243,7 @@ const MobileGenerationView = ({
                         </div>
                       )}
 
-                      {/* Zoom Controls - Bottom Right (Flowchart only) */}
+                      {/* Zoom Controls - Bottom Right (Mindmap only) */}
                       {viewMode === 'flowchart' && (
                         <div className="absolute bottom-2 right-2 z-10">
                           <div className="flex items-center space-x-1 bg-black/90 rounded-lg p-1 shadow-xl backdrop-blur-sm border border-gray-900/50">
