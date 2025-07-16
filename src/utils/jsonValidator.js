@@ -234,16 +234,11 @@ export const safeJsonParse = (jsonString, schema = null) => {
 export const sanitizeText = (text) => {
   if (typeof text !== 'string') return '';
   
+  // Only sanitize actual HTML tags and dangerous characters, but preserve ampersands in normal text
   return text
-    .replace(/[<>"'&]/g, (match) => {
-      const entities = {
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#x27;',
-        '&': '&amp;'
-      };
-      return entities[match];
-    })
+    .replace(/<script[^>]*>.*?<\/script>/gi, '') // Remove script tags
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/javascript:/gi, '') // Remove javascript: protocols
+    .replace(/on\w+\s*=/gi, '') // Remove event handlers
     .slice(0, 5000); // Limit length
 };

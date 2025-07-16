@@ -57,28 +57,37 @@ export const signInWithEmail = async (email, password) => {
   }
 };
 
-export const signInWithGoogle = async (useRedirect = true) => {
+export const signInWithGoogle = async (useRedirect = false) => {
   try {
     console.log('🔐 Starting Google sign-in process...', { useRedirect });
     const provider = new GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
     
-    if (useRedirect) {
-      // Use redirect method to avoid COOP issues and popup blocking
-      console.log('🔄 Using redirect method for Google sign-in');
-      await signInWithRedirect(auth, provider);
-      return { success: true, redirecting: true };
-    } else {
-      // Fallback to popup method
+    // For localhost development, prefer popup method to avoid redirect issues
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const shouldUsePopup = isLocalhost || !useRedirect;
+    
+    if (shouldUsePopup) {
+      // Use popup method for localhost and when explicitly requested
       console.log('🪟 Using popup method for Google sign-in');
       const userCredential = await signInWithPopup(auth, provider);
       console.log('✅ Google sign-in successful:', userCredential.user.email);
       return { success: true, user: userCredential.user };
+    } else {
+      // Use redirect method for production domains
+      console.log('🔄 Using redirect method for Google sign-in');
+      await signInWithRedirect(auth, provider);
+      return { success: true, redirecting: true };
     }
   } catch (error) {
     console.error('❌ Google sign-in error:', error);
-    return { success: false, error: error.message };
+    console.error('Error details:', {
+      code: error.code,
+      message: error.message,
+      customData: error.customData
+    });
+    return { success: false, error: error.message, errorCode: error.code };
   }
 };
 

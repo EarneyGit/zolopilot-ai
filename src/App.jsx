@@ -1416,17 +1416,28 @@ Return ONLY the JSON object, no markdown or additional text.`
               // Object - convert to array using Object.values, Object.entries, or manual extraction
               console.log('🔧 DEBUG: Converting object children to array at depth', depth);
               
-              // Try multiple extraction methods
+              // Try multiple extraction methods while preserving order
               let extractedChildren = [];
               
-              // Method 1: Object.values
+              // Method 1: Object.values (preserves insertion order in modern JS)
               const values = Object.values(childrenData);
               if (values.length > 0 && values.every(v => v && typeof v === 'object')) {
                 extractedChildren = values;
               } else {
-                // Method 2: Object.entries and reconstruct
+                // Method 2: Object.entries and reconstruct (preserves key order)
                 const entries = Object.entries(childrenData);
-                extractedChildren = entries.map(([key, value]) => {
+                // Sort entries by key to ensure consistent ordering if needed
+                const sortedEntries = entries.sort(([a], [b]) => {
+                  // Try to maintain numeric order if keys are numeric
+                  const numA = parseInt(a);
+                  const numB = parseInt(b);
+                  if (!isNaN(numA) && !isNaN(numB)) {
+                    return numA - numB;
+                  }
+                  // Otherwise maintain string order
+                  return a.localeCompare(b);
+                });
+                extractedChildren = sortedEntries.map(([key, value]) => {
                   if (value && typeof value === 'object') {
                     return { ...value, id: value.id || key };
                   } else {
