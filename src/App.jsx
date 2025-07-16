@@ -10,6 +10,7 @@ import ProfilePage from './components/earneygit'
 import SettingsPage from './components/SettingsPage'
 import TrendingIdeas from './components/TrendingIdeas'
 import PricingPage from './components/PricingPage'
+import UpgradePopup from './components/UpgradePopup'
 
 // MongoDB integration removed - using Firebase only
 
@@ -136,7 +137,11 @@ function App() {
   // Guest view state
   const [isGuestView, setIsGuestView] = useState(false)
   const [guestMindMapData, setGuestMindMapData] = useState(null)
-
+  
+  // Upgrade popup state
+  const [showUpgradePopup, setShowUpgradePopup] = useState(false)
+  const [mindMapCount, setMindMapCount] = useState(0)
+  
 
   // MongoDB integration removed - using Firebase only
 
@@ -196,16 +201,19 @@ function App() {
           // Load user's mind maps from cloud
           const userMindMaps = await loadUserMindMaps(user.uid)
           setCloudMindMaps(userMindMaps)
+          setMindMapCount(userMindMaps.length)
         } catch (error) {
           console.warn('Could not load user mind maps:', error.message)
           // Continue with empty array - user can create new mind maps
           setCloudMindMaps([])
+          setMindMapCount(0)
         }
         
         try {
           // Subscribe to real-time updates
           const subscription = subscribeToUserMindMaps(user.uid, (mindMaps) => {
             setCloudMindMaps(mindMaps)
+            setMindMapCount(mindMaps.length)
           })
           setMindMapSubscription(subscription)
         } catch (error) {
@@ -218,6 +226,7 @@ function App() {
         setIsAuthenticated(false)
         setMindMapData(null)
         setCloudMindMaps([])
+        setMindMapCount(0)
         
         // Cleanup subscription
         if (mindMapSubscription) {
@@ -1166,7 +1175,7 @@ Keep your response concise but valuable, focusing on actionable insights.`
 Return ONLY a JSON object with this structure (customize the content for the specific startup idea while keeping this exact structure):
         {
           "id": "root",
-          "text": "Comprehensive Startup Business Plan Framework",
+          "text": "${startupIdea}",
           "children": [
             {
               "id": "competitor-showcase",
@@ -1559,6 +1568,15 @@ Return ONLY the JSON object, no markdown or additional text.`
             const result = await saveMindMapToGallery(user.uid, mindMapResult, title, startupIdea)
             if (result.success) {
               console.log('✅ DEBUG: Mind map saved to cloud gallery with ID:', result.id)
+              
+              // Check if user has reached the 5 mind map limit for free plan
+              const newCount = mindMapCount + 1
+              if (newCount >= 5 && !user.isAnonymous) {
+                // Show upgrade popup after 5 mind maps for registered users
+                setTimeout(() => {
+                  setShowUpgradePopup(true)
+                }, 2000) // Show popup 2 seconds after mind map generation
+              }
             } else {
               console.error('❌ DEBUG: Failed to save to cloud gallery:', result.error)
             }
@@ -2825,9 +2843,13 @@ Return ONLY the JSON object, no markdown or additional text.`
         {currentPage === 'trending' && (
           <TrendingIdeas 
             onBack={() => setCurrentPage('generation')}
-            onSelectIdea={(idea) => {
+            onSelectIdea={async (idea) => {
               setStartupIdea(idea.description)
               setCurrentPage('generation')
+              // Automatically trigger mind map generation
+              setTimeout(() => {
+                generateMindMap()
+              }, 100) // Small delay to ensure state is updated
             }}
           />
         )}
@@ -3015,6 +3037,8 @@ Return ONLY the JSON object, no markdown or additional text.`
                 {loading && <LoadingSpinner size="sm" />}
                 {loading ? 'Generating...' : 'Generate Mind Map'}
               </button>
+              
+
           </div>
         </div>
 
@@ -3140,6 +3164,11 @@ Return ONLY the JSON object, no markdown or additional text.`
         />
       )}
       
+      {/* Upgrade Popup */}
+      <UpgradePopup
+        isOpen={showUpgradePopup}
+        onClose={() => setShowUpgradePopup(false)}
+      />
 
     </div>
   )

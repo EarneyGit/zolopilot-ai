@@ -626,7 +626,7 @@ const TrendingIdeas = ({ onBack, onSelectIdea }) => {
                 {/* Actions */}
                 <div className="flex items-center justify-between pt-4 border-t border-slate-600/50">
                   <button
-                    onClick={() => onSelectIdea(idea.title)}
+                    onClick={() => onSelectIdea(idea)}
                     className="flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium shadow-lg hover:shadow-purple-500/25"
                   >
                     <Lightbulb className="w-4 h-4" />
