@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Startup Mind Map AI Generator - Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .mind-map-node {
+            transition: all 0.3s ease;
+        }
+        .mind-map-node:hover {
+            transform: scale(1.02);
+        }
+        .mind-map-node.root {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .mind-map-node.category {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .mind-map-node.subcategory {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            max-width: 250px;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .tooltip.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+    <!-- Background gradients -->
+    <div class="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-purple-600/20 to-pink-600/20"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(120,119,198,0.3),transparent_70%)]"></div>
+    
+    <div class="relative z-10 min-h-screen p-4">
+        <div class="max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="text-center mb-12">
+                <h1 class="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight">
+                    Build something <span class="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">mindful</span>
+                </h1>
+                <p class="text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed">
+                    Transform your startup ideas into comprehensive visual plans with AI
+                </p>
+                <p class="text-sm text-purple-300 mt-4">
+                    📋 Demo Version - Run <code class="bg-slate-800/50 px-2 py-1 rounded">npm run dev</code> for full functionality
+                </p>
+            </div>
+
+                        <!-- Input Section -->
+            <div class="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-8 mb-8 shadow-2xl">
+                <div class="mb-6">
+                    <textarea
+                        placeholder="Describe your startup idea and watch AI create a comprehensive mind map..."
+                        class="w-full h-32 px-4 py-3 bg-slate-900/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none text-lg leading-relaxed"
+                        readonly
+                    ></textarea>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="flex flex-wrap gap-3 mb-4">
+                    <button
+                        class="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-700 hover:to-pink-700 flex items-center gap-2 font-medium text-lg transition-all duration-200 shadow-lg hover:shadow-purple-500/25"
+                        onclick="showDemoAlert()"
+                    >
+                        Generate Mind Map
+                    </button>
+                    <button
+                        class="px-6 py-3 bg-slate-700/50 text-white rounded-xl hover:bg-slate-600/50 flex items-center gap-2 font-medium transition-all duration-200 border border-slate-600/50"
+                        onclick="loadDemo()"
+                    >
+                        🎯 Try Demo
+                    </button>
+                </div>
+                
+                <!-- Status -->
+                <div class="text-sm text-emerald-400 flex items-center gap-2">
+                    <div class="w-2 h-2 bg-emerald-400 rounded-full"></div>
+                    Google Gemini 2.0 Flash configured and ready to use
+                </div>
+            </div>
+
+            <!-- Demo Message -->
+            <div id="demoMessage" class="bg-emerald-900/50 border border-emerald-500/50 text-emerald-300 px-6 py-4 rounded-xl mb-6 backdrop-blur-sm hidden">
+                Demo mind map loaded! In the full app, you can edit nodes by double-clicking them.
+            </div>
+
+            <!-- Mind Map Demo -->
+            <div id="mindMapContainer" class="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-8 shadow-2xl hidden">
+                <h2 class="text-3xl font-bold text-white mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Your Mind Map</h2>
+                <div class="mind-map-container min-h-96 border border-slate-600/50 rounded-xl p-6 bg-slate-900/30">
+                    
+                    <!-- Root Node -->
+                    <div class="flex flex-col items-center space-y-6">
+                        <div class="mind-map-node root text-white p-4 rounded-lg shadow-lg text-lg font-bold max-w-md mx-auto text-center">
+                            Your Startup Idea: AI-powered platform for personalized fitness coaching
+                        </div>
+                        
+                        <!-- Main Categories -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 w-full max-w-6xl">
+                            
+                            <!-- Category 1: Idea & Market Validation -->
+                            <div class="flex flex-col items-center space-y-4">
+                                <div class="mind-map-node category text-white p-3 rounded-lg shadow-md text-md font-semibold max-w-xs text-center">
+                                    I. Idea & Market Validation
+                                </div>
+                                <div class="grid grid-cols-1 gap-4 w-full max-w-2xl">
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Target Audience: Health-conscious individuals aged 25-45
+                                    </div>
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Competitive Analysis: MyFitnessPal, Noom, Freeletics
+                                    </div>
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Value Proposition: AI-driven personalized coaching
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Category 2: Business Planning -->
+                            <div class="flex flex-col items-center space-y-4">
+                                <div class="mind-map-node category text-white p-3 rounded-lg shadow-md text-md font-semibold max-w-xs text-center">
+                                    II. Business Planning
+                                </div>
+                                <div class="grid grid-cols-1 gap-4 w-full max-w-2xl">
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Business Model: SaaS subscription
+                                    </div>
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Revenue Streams: Subscriptions, partnerships
+                                    </div>
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Pricing: $9.99, $19.99, $39.99/month
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Category 3: Goal Setting System -->
+                            <div class="flex flex-col items-center space-y-4">
+                                <div class="mind-map-node category text-white p-3 rounded-lg shadow-md text-md font-semibold max-w-xs text-center relative"
+                                     onmouseenter="showTooltip(this)"
+                                     onmouseleave="hideTooltip()">
+                                    VII. Goal Setting System
+                                    <div id="tooltip" class="tooltip">
+                                        This section suggests a goal setting system tailored to your business idea, along with success stories of companies that used it.
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 gap-4 w-full max-w-2xl">
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Suggested: OKRs (Objectives and Key Results)
+                                    </div>
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Why: Perfect for startups needing focus
+                                    </div>
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Success Stories: Google, LinkedIn, Spotify
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Category 4: Team & Roles -->
+                            <div class="flex flex-col items-center space-y-4">
+                                <div class="mind-map-node category text-white p-3 rounded-lg shadow-md text-md font-semibold max-w-xs text-center">
+                                    VIII. Team & Roles (AI vs. Human)
+                                </div>
+                                <div class="grid grid-cols-1 gap-4 w-full max-w-2xl">
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        CTO (1) - Human: Complex architecture
+                                    </div>
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        AI/ML Engineer (1-2) - Human: Expertise needed
+                                    </div>
+                                    <div class="mind-map-node subcategory text-white p-2 rounded-md shadow-sm text-sm max-w-48 text-center">
+                                        Data Analyst (1) - AI Agent: Automation ready
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Features Section -->
+            <div class="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-8 shadow-2xl mt-8">
+                <h2 class="text-3xl font-bold text-white mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Key Features</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="flex items-start space-x-3">
+                        <div class="text-blue-600 text-xl">🤖</div>
+                        <div>
+                            <h3 class="font-semibold text-white">AI-Powered Generation</h3>
+                            <p class="text-slate-300 text-sm">Supports Google Gemini, OpenAI, and Anthropic APIs</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div class="text-emerald-400 text-xl">✏️</div>
+                        <div>
+                            <h3 class="font-semibold text-white">Interactive Editing</h3>
+                            <p class="text-slate-300 text-sm">Double-click to edit, add children, delete nodes</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div class="text-purple-400 text-xl">💾</div>
+                        <div>
+                            <h3 class="font-semibold text-white">Auto-Save</h3>
+                            <p class="text-slate-300 text-sm">Automatic persistence with Firebase Firestore</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div class="text-orange-400 text-xl">🎯</div>
+                        <div>
+                            <h3 class="font-semibold text-white">Goal Setting AI</h3>
+                            <p class="text-slate-300 text-sm">Suggests OKRs, SMART goals, and other frameworks</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div class="text-pink-400 text-xl">👥</div>
+                        <div>
+                            <h3 class="font-semibold text-white">Team Analysis</h3>
+                            <p class="text-slate-300 text-sm">AI vs. Human role recommendations</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div class="text-cyan-400 text-xl">📱</div>
+                        <div>
+                            <h3 class="font-semibold text-white">Responsive Design</h3>
+                            <p class="text-slate-300 text-sm">Works on desktop, tablet, and mobile</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Setup Instructions -->
+            <div class="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-8 shadow-2xl mt-8">
+                <h2 class="text-3xl font-bold text-white mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">🚀 Get Started</h2>
+                <div class="prose prose-blue max-w-none">
+                    <ol class="list-decimal list-inside space-y-3 text-slate-300">
+                        <li>Install dependencies: <code class="bg-slate-900/50 px-3 py-1 rounded text-purple-300">npm install</code></li>
+                        <li>Configure Firebase in <code class="bg-slate-900/50 px-3 py-1 rounded text-purple-300">src/firebase.js</code></li>
+                        <li>Add your AI API key in <code class="bg-slate-900/50 px-3 py-1 rounded text-purple-300">src/App.jsx</code></li>
+                        <li>Start the app: <code class="bg-slate-900/50 px-3 py-1 rounded text-purple-300">npm run dev</code></li>
+                    </ol>
+                    <p class="mt-6 text-slate-300 bg-slate-900/30 p-4 rounded-lg border border-slate-600/30">
+                        📚 See the README.md for detailed setup instructions and API configuration.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <script>
+        function showDemoAlert() {
+            alert('To use AI generation, please run the full React application with "npm run dev" after setting up your API keys!');
+        }
+
+        function loadDemo() {
+            document.getElementById('demoMessage').classList.remove('hidden');
+            document.getElementById('mindMapContainer').classList.remove('hidden');
+            document.getElementById('mindMapContainer').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showTooltip(element) {
+            const tooltip = element.querySelector('#tooltip');
+            if (tooltip) {
+                tooltip.classList.add('show');
+            }
+        }
+
+        function hideTooltip() {
+            const tooltip = document.querySelector('#tooltip');
+            if (tooltip) {
+                tooltip.classList.remove('show');
+            }
+        }
+    </script>
+</body>
+</html> 
