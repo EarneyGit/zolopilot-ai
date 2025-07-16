@@ -565,33 +565,33 @@ Keep your response concise but valuable, focusing on actionable insights.`
       return
     }
 
-    // Check if user is authenticated, if not, prompt for Google login
-    if (!isAuthenticated || !user) {
-      setLoading(true)
-      setError('')
-      setMessage('🔐 Signing you in with Google for the best experience...')
-      
-      try {
-        const result = await signInWithGoogle(true); // Use redirect method
-        if (result.success && result.redirecting) {
-          setMessage('🔄 Redirecting to Google for authentication...')
-          // The page will redirect, so we don't need to continue here
-          return
-        } else if (result.success && result.user) {
-          // Popup method succeeded (fallback)
-          setUser(result.user)
-          setIsAuthenticated(true)
-          setMessage('✅ Successfully signed in! Generating mind map...')
-        } else {
-          throw new Error(result.error || 'Authentication failed')
-        }
-      } catch (error) {
-        console.error('❌ Google authentication failed:', error)
-        setError(`Authentication failed: ${error.message}. You can still use the app without signing in.`)
-        setLoading(false)
-        return
-      }
-    }
+    // TEMPORARILY DISABLED: Check if user is authenticated, if not, prompt for Google login
+    // if (!isAuthenticated || !user) {
+    //   setLoading(true)
+    //   setError('')
+    //   setMessage('🔐 Signing you in with Google for the best experience...')
+    //   
+    //   try {
+    //     const result = await signInWithGoogle(true); // Use redirect method
+    //     if (result.success && result.redirecting) {
+    //       setMessage('🔄 Redirecting to Google for authentication...')
+    //       // The page will redirect, so we don't need to continue here
+    //       return
+    //     } else if (result.success && result.user) {
+    //       // Popup method succeeded (fallback)
+    //       setUser(result.user)
+    //       setIsAuthenticated(true)
+    //       setMessage('✅ Successfully signed in! Generating mind map...')
+    //     } else {
+    //       throw new Error(result.error || 'Authentication failed')
+    //     }
+    //   } catch (error) {
+    //     console.error('❌ Google authentication failed:', error)
+    //     setError(`Authentication failed: ${error.message}. You can still use the app without signing in.`)
+    //     setLoading(false)
+    //     return
+    //   }
+    // }
 
     setLoading(true)
     setError('')
@@ -1570,13 +1570,13 @@ Return ONLY the JSON object, no markdown or additional text.`
               console.log('✅ DEBUG: Mind map saved to cloud gallery with ID:', result.id)
               
               // Check if user has reached the 5 mind map limit for free plan
-              const newCount = mindMapCount + 1
-              if (newCount >= 5 && !user.isAnonymous) {
-                // Show upgrade popup after 5 mind maps for registered users
-                setTimeout(() => {
-                  setShowUpgradePopup(true)
-                }, 2000) // Show popup 2 seconds after mind map generation
-              }
+              // const newCount = mindMapCount + 1
+              // if (newCount >= 5 && !user.isAnonymous) {
+              //   // Show upgrade popup after 5 mind maps for registered users
+              //   setTimeout(() => {
+              //     setShowUpgradePopup(true)
+              //   }, 2000) // Show popup 2 seconds after mind map generation
+              // }
             } else {
               console.error('❌ DEBUG: Failed to save to cloud gallery:', result.error)
             }
